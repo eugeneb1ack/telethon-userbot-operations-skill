@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Native, read-only router for the local Telethon userbot CLI modules.
+
+This does not connect to Telegram or execute a module. It maps a natural-language
+request to a compact command template so smaller models do not need a giant
+skill body to rediscover the project surface on every request.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from dataclasses import dataclass, asdict
+
+
+@dataclass(frozen=True)
+class Operation:
+    slug: str
+    module: str
+    mode: str
+    summary: str
+    triggers: tuple[str, ...]
+    command: str
+    safety: str
+
+
+OPERATIONS = (
+    Operation("list_members", "list_group_members.py", "read_only", "List current group/channel members.", ("список участников", "участники", "участников", "состав чата", "members", "participants"), "venv/bin/python modules/list_group_members.py --account main --chat '<chat>'", "Bounded read-only listing; bots/deleted accounts are excluded by default."),
+    Operation("search_messages", "search_messages.py", "read_only", "Search a bounded chat window using text, sender, or timestamps.", ("поиск сообщений", "найди сообщение", "найти сообщения", "история чата", "search messages", "search chat"), "venv/bin/python modules/search_messages.py --account main --chat '<chat>' --query '<text>' --limit 100", "Returns compact previews, not a full private-history dump."),
+    Operation("download_media", "download_media.py", "local_write", "Preview and locally download media from exact message IDs.", ("скачай медиа", "скачай файл", "скачай фото", "скачай видео", "выгрузи медиа", "download media", "download file"), "venv/bin/python modules/download_media.py --account main --chat '<chat>' --message-ids <id,id>", "Local file write needs a preview, then --execute; data stays under runtime/<account>/data/downloads."),
+    Operation("transcribe_audio", "transcribe_audio_native.py", "read_only", "Native Telegram transcription of one voice/audio/video-note message.", ("расшифруй голосовое", "транскрибируй", "расшифруй аудио", "voice transcription", "transcribe audio"), "venv/bin/python modules/transcribe_audio_native.py --account main --chat '<chat>' --message-id <id> --sender-id <expected_sender_id> --json", "For another person's media, always pass and verify --sender-id; do not summarize incomplete transcription."),
+    Operation("summarize_chat", "summarize_chat_native.py", "read_only", "Collect a Moscow-time chat window and produce compact native-STT context.", ("саммари чата", "сводка чата", "подведи итоги чата", "summarize chat", "chat recap"), "venv/bin/python modules/summarize_chat_native.py --account main --chat '<chat>' --date YYYY-MM-DD --do-summary", "Use this native route, not legacy summarize.py, for new work."),
+    Operation("count_messages", "count_user_messages.py", "read_only", "Count a participant's messages by type in a time window.", ("посчитай сообщения", "сколько сообщений", "count messages"), "venv/bin/python modules/count_user_messages.py --account main --chat '<chat>' --user '<user>' --hours 48", "--send publishes a report and is a Telegram write."),
+    Operation("list_personal_chats", "personal_chats.py", "read_only", "List personal dialogs.", ("личные чаты", "лички", "диалоги", "personal chats", "dms"), "venv/bin/python modules/personal_chats.py --account main --json", "Read-only."),
+    Operation("list_groups", "group_chats.py", "read_only", "List group dialogs.", ("список групп", "мои группы", "group chats"), "venv/bin/python modules/group_chats.py --account main --json", "Read-only."),
+    Operation("list_channels", "channel_chats.py", "read_only", "List channel dialogs.", ("список каналов", "мои каналы", "channel chats"), "venv/bin/python modules/channel_chats.py --account main --json", "Read-only."),
+    Operation("send_message", "send_message.py", "telegram_write", "Send one message to an exact chat/user.", ("отправь сообщение", "напиши в телеграм", "send message"), "venv/bin/python modules/send_message.py --account main --chat '<chat>' --text '<text>'", "Preview first. Telegram send needs explicit user approval and --execute."),
+    Operation("edit_message", "message_edit.py", "telegram_write", "Edit one outgoing message, including inline custom emoji in HTML mode.", ("отредактируй сообщение", "измени сообщение", "edit message", "custom emoji в сообщении"), "venv/bin/python modules/message_edit.py --account main --chat '<chat>' --message-id <id> --text '<text>'", "Only the account's outgoing message may be edited; execute requires exact read-back."),
+    Operation("forward_messages", "forward_messages.py", "telegram_write", "Forward exact frozen message IDs between two chats.", ("перешли сообщение", "форвардни", "перешли в чат", "forward message"), "venv/bin/python modules/forward_messages.py --account main --source-chat '<source>' --destination-chat '<destination>' --message-ids <id,id>", "Preview source and destination; forwarding is external disclosure and needs --execute."),
+    Operation("pin_message", "pin_message.py", "telegram_write", "Inspect, pin, or unpin one exact message.", ("закрепи сообщение", "открепи сообщение", "пин", "pin message", "unpin"), "venv/bin/python modules/pin_message.py --account main --chat '<chat>' --message-id <id> --action pin", "Preview exact message and pin state; change needs --execute."),
+    Operation("create_emoji_pack", "create_emoji_pack.py", "telegram_write", "Create one custom emoji pack with a readable text emoji.", ("создай пак эмоджи", "создай пак эмодзи", "emoji pack", "custom emoji pack", "текст пак"), "venv/bin/python modules/create_emoji_pack.py --account main --title 'текст пак' --text 'ЖИРНЫЙ' --emoji '💪'", "Dry-run resolves a unique short name and renders locally; Telegram creation needs --execute and exact read-back."),
+    Operation("react_custom_emoji", "react_custom_emoji_user_messages.py", "telegram_write", "React to one user's recent messages with a resolved custom emoji document.", ("поставь реакцию кастомным эмодзи", "реакция этим эмодзи", "custom emoji reaction", "react with custom emoji"), "venv/bin/python modules/react_custom_emoji_user_messages.py --account main --chat '<chat>' --user-name '<name>' --pack-short-name '<pack>' --limit 100", "Dry-run freezes the exact user ID, pack document ID, and message IDs; --execute preserves existing reactions and verifies every target."),
+    Operation("profile", "profile_settings.py", "telegram_write", "Inspect/change profile fields or custom emoji status.", ("измени профиль", "измени био", "смени юзернейм", "emoji status", "статус эмодзи", "profile settings"), "venv/bin/python modules/profile_settings.py --account main --about '<bio>'", "Public identity change: preview exact values, resolve custom emoji document ID, then --execute."),
+    Operation("group_member", "group_member.py", "telegram_write", "Inspect or change one member's group permissions.", ("выдай админа", "убери админа", "забань", "ограничи участника", "права участника", "group admin", "restrict member", "kick member"), "venv/bin/python modules/group_member.py --account main --group '<group>' --user '<user>' --action inspect", "Show current rights first. Admin/restrict/kick is high-impact and needs --execute plus read-back."),
+    Operation("react_messages", "react_recent_user_messages.py", "telegram_write", "React to a user's frozen/recent messages without replacing existing account reactions.", ("поставь реакцию", "реакции на сообщения", "react to messages"), "venv/bin/python modules/react_recent_user_messages.py --account main --chat '<chat>' --username '<user>' --limit <n> --emoji '<emoji>'", "Dry-run freezes IDs; execute preserves existing reactions unless explicitly overridden."),
+    Operation("mention_members", "mention_group_members.py", "telegram_write", "Prepare a mention of all current non-bot group members.", ("отметь всех", "тегни всех", "упомяни всех", "mention everyone"), "venv/bin/python modules/mention_group_members.py --account main --chat '<chat>' --text '<text>'", "Dry-run refreshes membership; sending chunks needs --execute."),
+    Operation("add_contact", "add_contact.py", "telegram_write", "Add one user to Telegram contacts.", ("добавь в контакты", "add contact"), "venv/bin/python modules/add_contact.py --account main --user '<user>'", "Dry-run first; never share own phone by default; write needs --execute."),
+    Operation("purge_one_chat", "purge_me.py", "telegram_write", "Plan/delete only the account's outgoing messages in one chat.", ("удали мои сообщения", "почисти мои сообщения", "purge my messages"), "venv/bin/python modules/purge_me.py --account main --chat '<chat>'", "Dry-run first. Deletion requires explicit approval and --execute."),
+    Operation("replace_own_messages", "mass_replace_own_messages.py", "telegram_write", "Replace own text messages and optionally delete own media in one exact chat.", ("замени мои сообщения", "перепиши мои сообщения", "mass replace"), "venv/bin/python modules/mass_replace_own_messages.py --account main --chat '<chat>' --text '<text>'", "Dry-run validates one unambiguous chat; write needs --execute."),
+    Operation("purge_all_groups", "purge_all_group_messages.py", "telegram_write", "Plan/delete own messages across eligible groups with exclusions.", ("удали мои сообщения во всех группах", "почисти все группы", "purge all groups"), "venv/bin/python modules/purge_all_group_messages.py --account main --exclude '<keep_chat>'", "High-impact bulk deletion. Review every target/exclusion and use --execute only after confirmation."),
+)
+
+
+def normalized_tokens(value: str) -> set[str]:
+    return {token for token in re.findall(r"[\w@.-]+", value.casefold()) if len(token) > 1}
+
+
+def score(operation: Operation, query: str) -> int:
+    haystack = " ".join((operation.slug, operation.module, operation.summary, *operation.triggers)).casefold()
+    raw = query.casefold().strip()
+    tokens = normalized_tokens(query)
+    points = sum(8 for trigger in operation.triggers if trigger in raw)
+    points += sum(1 for token in tokens if token in haystack)
+    return points
+
+
+def operation_payload(operation: Operation, points: int = 0) -> dict[str, object]:
+    payload = asdict(operation)
+    payload["score"] = points
+    return payload
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(description="Find the smallest existing local userbot module for a natural-language request")
+    result.add_argument("--query", help="Natural-language request to match")
+    result.add_argument("--operation", help="Exact operation slug")
+    result.add_argument("--list", action="store_true", help="List all registered operations")
+    result.add_argument("--json", action="store_true")
+    return result
+
+
+def main() -> int:
+    args = parser().parse_args()
+    if sum(bool(value) for value in (args.query, args.operation, args.list)) != 1:
+        parser.error("choose exactly one of --query, --operation, or --list")
+
+    if args.list:
+        matches = [operation_payload(item) for item in OPERATIONS]
+    elif args.operation:
+        item = next((item for item in OPERATIONS if item.slug == args.operation), None)
+        if item is None:
+            print(json.dumps({"ok": False, "error": "unknown_operation", "operation": args.operation}, ensure_ascii=False))
+            return 2
+        matches = [operation_payload(item)]
+    else:
+        ranked = sorted(((score(item, args.query), item) for item in OPERATIONS), key=lambda value: (-value[0], value[1].slug))
+        matches = [operation_payload(item, points) for points, item in ranked if points > 0][:5]
+
+    payload = {"ok": bool(matches), "count": len(matches), "operations": matches}
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif not matches:
+        print("No existing module matched. Load userbot and inspect the local API inventory before adding one.")
+    else:
+        for item in matches:
+            print(f"[{item['slug']}] {item['module']} — {item['summary']}")
+            print(f"  mode: {item['mode']}")
+            print(f"  command: {item['command']}")
+            print(f"  safety: {item['safety']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

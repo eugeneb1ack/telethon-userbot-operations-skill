@@ -1,71 +1,108 @@
 ---
-name: telethon-userbot-operations
-description: "Use for any local Telethon userbot operation."
-version: 1.2.0
+name: userbot
+description: Use for any local Telethon userbot request.
+version: 2.1.0
 ---
 
-# Telethon Userbot Operations
+# Telethon Userbot
 
-Use this skill when the local Telethon userbot needs an operation that is not already routed by its module registry: custom emoji packs, stickers, stories, invite links, folders, privacy, forums, or unusual group/channel settings.
+This is the **single canonical skill** for the local Telethon userbot.
 
-## Runtime contract
-
-Set these once for the current machine/profile:
+- Project runtime: `$USERBOT_ROOT`, default `$HOME/Documents/telethon-userbot`.
+- Python: `$USERBOT_PY`, default `$USERBOT_ROOT/venv/bin/python`.
+- Existing userbot modules are the execution layer.
+- This skill routes a request, enforces safety, and says when a new module is justified.
 
 ```bash
 export USERBOT_ROOT="${USERBOT_ROOT:-$HOME/Documents/telethon-userbot}"
 export USERBOT_PY="$USERBOT_ROOT/venv/bin/python"
+export USERBOT_SKILL_DIR="${USERBOT_SKILL_DIR:-$HOME/.hermes/skills/openclaw-imports/userbot}"
 ```
 
-The project must have an existing authorized session. Every direct helper must use `core.config.load_settings(account)` and `apply_runtime_env(settings)`, call `connect()`, require `is_user_authorized()`, and disconnect in `finally`. Never hard-code credentials or invoke interactive `client.start()`.
+For a named Hermes profile, set `USERBOT_SKILL_DIR` to that profile’s installed `userbot` directory explicitly.
 
-## Choose the smallest existing route first
+## Portable bootstrap
 
-Before designing a new helper, ask the project’s read-only registry:
+This skill bundles a secret-free source template with the current module catalog. If `$USERBOT_ROOT` does not exist, plan a new project first:
+
+```bash
+python3 "$USERBOT_SKILL_DIR/scripts/bootstrap_userbot_project.py" \
+  --destination "$USERBOT_ROOT"
+```
+
+Only after the owner explicitly approves creation of that **new** folder:
+
+```bash
+python3 "$USERBOT_SKILL_DIR/scripts/bootstrap_userbot_project.py" \
+  --destination "$USERBOT_ROOT" --execute
+```
+
+The bootstrap refuses an existing destination. Never use it to overwrite, merge into, or “upgrade” a working userbot. The template contains source code and 23 registry routes, but no `.env`, session, runtime data, or account material.
+
+## One route for every request
+
+Start with the project’s read-only registry. It performs no Telegram I/O and returns an existing module whenever possible:
 
 ```bash
 cd "$USERBOT_ROOT"
 "$USERBOT_PY" scripts/userbot_module_registry.py --query '<natural-language request>'
 ```
 
-If it returns a module, use that CLI. Do not create a one-off or a duplicate module.
+Use the returned CLI, not an ad-hoc script. The registry covers members, history search, downloads, transcription, summaries, profile/custom emoji status, messages, forwarding, pins, group permissions, reactions, contacts, and cleanup.
 
-## Verify exact Telethon API contracts
+## Session onboarding
 
-If the registry has no match, query the installed Telethon schema before writing code:
+Load `references/session-bootstrap.md` for setup, login, importing a `.session`, repair, or authorization verification.
+
+- Only trusted local `./run.sh --account <name>` may start interactive login.
+- The owner types Telegram code and 2FA directly into that terminal.
+- Agents never ask for, read, type, copy, upload, or commit codes, passwords, `.session`, API hash, phone numbers, or account env files.
+- Check readiness without exposing contents:
 
 ```bash
-SKILL_DIR="${SKILL_DIR:-$HOME/.hermes/skills/social-media/telethon-userbot-operations}"
-"$USERBOT_PY" "$SKILL_DIR/scripts/telethon_api_inventory.py" --request messages.EditMessageRequest
-"$USERBOT_PY" "$SKILL_DIR/scripts/telethon_api_inventory.py" --namespace stickers --json
-"$USERBOT_PY" "$SKILL_DIR/scripts/telethon_api_inventory.py" --client --query edit_message
+"$USERBOT_PY" "$USERBOT_SKILL_DIR/scripts/verify_userbot_session.py" \
+  --project-root "$USERBOT_ROOT" --account main
+
+# Explicit read-only authorization probe; it never starts login.
+"$USERBOT_PY" "$USERBOT_SKILL_DIR/scripts/verify_userbot_session.py" \
+  --project-root "$USERBOT_ROOT" --account main --online
 ```
 
-Then consult the official page printed by the inventory:
+## Runtime safety contract
 
-- <https://docs.telethon.dev/en/stable/modules/client.html>
-- <https://docs.telethon.dev/en/stable/concepts/errors.html>
-- `https://tl.telethon.dev/methods/<namespace>/<request>.html`
+- Direct helpers use `load_settings()` + `apply_runtime_env()`, `connect()`, `is_user_authorized()`, and `disconnect()` in `finally`. Never `client.start()`.
+- Read-only work may proceed after exact source/target resolution.
+- Telegram writes and local downloads plan first. Add `--execute` only after explicit approval for the exact external action.
+- Freeze IDs before batches. Fail closed on ambiguity. Respect `FloodWaitError` once per unit. Read back final state.
+- Never report an attempted request as success.
 
-## Registering a session safely
+## When no module exists
 
-Before any userbot module can connect, the owner must register the Telethon session **locally**. Load `references/session-bootstrap.md` when the user asks to install, authorize, import, repair, or verify a session.
+1. Inspect installed API with this bundled inventory:
+   ```bash
+   "$USERBOT_PY" "$USERBOT_SKILL_DIR/scripts/telethon_api_inventory.py" \
+     --request messages.EditMessageRequest
+   ```
+2. Open the official URL returned by inventory: Telethon client docs, RPC errors, and matching TL schema.
+3. Read `references/module-authoring.md`.
+4. Add one focused module under `modules/`, then update the registry and `MODULES.md`.
 
-- The trusted project launcher may use interactive `client.start()` once; direct helpers must never do so.
-- Telegram login code, 2FA password, `.session`, API hash and account env values never enter agent chat, tool output, GitHub, or an agent-controlled upload.
-- The package helper `scripts/verify_userbot_session.py` has offline file/SQLite/permission mode and explicit `--online` authorization mode. It never starts login or prints session contents.
+This is the bounded self-improvement loop: reuse first; otherwise inspect the installed API and official documentation; add one tested module; update its route and docs. Do not silently rewrite unrelated modules, turn it into a generic Telegram API wrapper, or publish a new package revision without an explicit owner request.
 
-## Universal write boundary
+For custom emoji, distinguish inline entities, reactions, profile/channel status, and emoji packs. Use `references/operation-playbook.md` before choosing an API.
 
-1. Resolve the exact peer/object; fail closed on ambiguity.
-2. Output a dry-run plan by default, including frozen IDs/current state.
-3. Add `--execute` only after explicit user approval for the external action.
-4. On `FloodWaitError`, wait `seconds + 1` and retry the same unit once.
-5. Read back exact server state. An attempted request is not success.
-6. Add fake-client tests and update the userbot registry plus `MODULES.md`.
+For an explicitly approved channel post with local media, use `references/channel-rich-publishing.md`. If the registry has no purpose-built module, add one through the authoring contract; do not bypass the dry-run/read-back boundary with an ad-hoc send.
 
-Use `references/module-authoring.md` for the required module shape. Use `references/operation-playbook.md` for API routing and custom-emoji distinctions.
+Never build a generic raw-request runner or automate auth, recovery, passkeys, phone changes, account deletion, payments/Stars/gifts/refunds, SMS jobs, or secret-chat internals.
 
-## Never generic-automate
+## Verification after code changes
 
-Do not build an unrestricted raw-request runner. Keep `auth`, passwords/recovery/passkeys, phone changes, account deletion, payments/Stars/gifts/refunds, SMS jobs, and secret-chat internals manual unless a narrowly reviewed owner task explicitly calls for them.
+```bash
+cd "$USERBOT_ROOT"
+venv/bin/python -m compileall -q . -x '/(venv|\.git|__pycache__)'
+venv/bin/python -m unittest discover -s tests -v
+venv/bin/python -m pip check
+for f in modules/*.py; do venv/bin/python "$f" --help >/dev/null; done
+```
+
+`userbot` is the only installed skill name. Do not create aliases or duplicate operational guides.

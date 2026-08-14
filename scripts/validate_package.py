@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Validate the distributable skill package without network or Telegram I/O."""
+"""Validate the portable userbot skill package without network or Telegram I/O."""
 
 from __future__ import annotations
 
 import py_compile
+import re
 import sys
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+TEMPLATE = ROOT / "templates" / "userbot"
 REQUIRED = (
     "SKILL.md",
     "README.md",
@@ -16,14 +18,40 @@ REQUIRED = (
     "SECURITY.md",
     ".gitignore",
     "references/operation-playbook.md",
+    "references/channel-rich-publishing.md",
     "references/module-authoring.md",
     "references/session-bootstrap.md",
+    "scripts/bootstrap_userbot_project.py",
     "scripts/telethon_api_inventory.py",
     "scripts/verify_userbot_session.py",
+    "scripts/test_bootstrap_userbot_project.py",
     "scripts/test_session_checker.py",
+    "templates/userbot/main.py",
+    "templates/userbot/run.sh",
+    "templates/userbot/requirements.txt",
+    "templates/userbot/AGENTS.md",
+    "templates/userbot/MODULES.md",
+    "templates/userbot/ACCOUNT.env.example",
+    "templates/userbot/core/config.py",
+    "templates/userbot/scripts/userbot_module_registry.py",
 )
 FORBIDDEN_NAMES = {".env", "accounts", "runtime", "data", "venv", ".venv", "__pycache__"}
 FORBIDDEN_SUFFIXES = {".session", ".session-journal", ".sqlite3", ".db"}
+TEXT_SUFFIXES = {".py", ".md", ".sh", ".txt", ".toml", ".json", ".yaml", ".yml", ".example"}
+SECRET_PATTERNS = (
+    re.compile(r"\b\d{7,12}:[A-Za-z0-9_-]{20,}\b"),
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"(?i)(?:api_hash|bot_token|password|phone_number)\s*=\s*[\"'][^\"']{12,}[\"']"),
+)
+
+
+def source_files() -> list[Path]:
+    return [
+        path
+        for path in sorted(ROOT.rglob("*.py"))
+        if ".git" not in path.parts and "__pycache__" not in path.parts
+    ]
 
 
 def main() -> int:
@@ -33,28 +61,50 @@ def main() -> int:
         return 1
 
     skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-    if not skill.startswith("---\n") or "\nname: telethon-userbot-operations\n" not in skill:
+    if not skill.startswith("---\n") or "\nname: userbot\n" not in skill:
         print("SKILL.md frontmatter is missing or has the wrong name", file=sys.stderr)
         return 1
 
     blocked = []
+    secret_hits = []
     for path in ROOT.rglob("*"):
         if ".git" in path.parts:
             continue
         if path.name in FORBIDDEN_NAMES or path.suffix in FORBIDDEN_SUFFIXES:
             blocked.append(str(path.relative_to(ROOT)))
+        if not path.is_file() or path.suffix not in TEXT_SUFFIXES:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            secret_hits.append(str(path.relative_to(ROOT)))
+            continue
+        if any(pattern.search(text) for pattern in SECRET_PATTERNS):
+            secret_hits.append(str(path.relative_to(ROOT)))
     if blocked:
         print(f"Forbidden runtime or secret-bearing paths: {', '.join(sorted(blocked))}", file=sys.stderr)
         return 1
+    if secret_hits:
+        print(f"Potential credential values in package: {', '.join(sorted(secret_hits))}", file=sys.stderr)
+        return 1
 
-    with tempfile.TemporaryDirectory(prefix="telethon_skill_validate_") as tmp:
+    template_modules = list((TEMPLATE / "modules").glob("*.py"))
+    if len(template_modules) < 20:
+        print("Template module catalog is unexpectedly incomplete", file=sys.stderr)
+        return 1
+
+    with tempfile.TemporaryDirectory(prefix="userbot_skill_validate_") as tmp:
         compile_dir = Path(tmp)
-        for script in (ROOT / "scripts").glob("*.py"):
-            py_compile.compile(str(script), cfile=str(compile_dir / f"{script.name}c"), doraise=True)
+        for script in source_files():
+            relative = script.relative_to(ROOT)
+            output = compile_dir / f"{relative}.c"
+            output.parent.mkdir(parents=True, exist_ok=True)
+            py_compile.compile(str(script), cfile=str(output), doraise=True)
 
     print("package_validation=ok")
-    print(f"root={ROOT}")
     print(f"required_files={len(REQUIRED)}")
+    print(f"template_modules={len(template_modules)}")
+    print(f"python_sources={len(source_files())}")
     return 0
 
 

@@ -1,125 +1,90 @@
-# Telethon Userbot Operations Skill
+# Telethon Userbot Skill
 
-A private Hermes skill for safely extending a local [Telethon](https://docs.telethon.dev/) userbot.
+Private, portable Hermes skill **`userbot`** for a local [Telethon](https://docs.telethon.dev/) userbot.
 
-It is **not** a Telegram client or a generic API cannon. It gives an agent a disciplined route from a request to either:
+This repository is the single distribution point. It contains exactly one active skill name, its safe operating rules, current module source template, session onboarding, API inventory, and offline checks.
 
-1. an existing local userbot module; or
-2. one small, tested, dry-run-first module built against the exact installed Telethon API.
+It is not a generic Telegram API cannon. It routes a request to an existing module first; only then does it permit one small, tested extension built against the installed Telethon API and official Telethon/TL documentation.
 
-## What it contains
+## What is inside
 
 ```text
 telethon-userbot-operations-skill/
-├── SKILL.md
+├── SKILL.md                         # canonical skill: name=userbot
 ├── INSTALL.md
 ├── SECURITY.md
 ├── references/
-│   ├── operation-playbook.md
+│   ├── session-bootstrap.md
 │   ├── module-authoring.md
-│   └── session-bootstrap.md
-└── scripts/
-    ├── telethon_api_inventory.py
-    ├── verify_userbot_session.py
-    ├── test_session_checker.py
-    └── validate_package.py
+│   ├── operation-playbook.md
+│   └── channel-rich-publishing.md
+├── scripts/
+│   ├── bootstrap_userbot_project.py  # create a NEW project only
+│   ├── verify_userbot_session.py     # offline / explicit online readiness check
+│   ├── telethon_api_inventory.py     # zero-network API introspection
+│   └── test_*.py / validate_package.py
+└── templates/userbot/                # secret-free current project template
+    ├── core/
+    ├── modules/
+    ├── scripts/userbot_module_registry.py
+    ├── tests/
+    └── docs/
 ```
 
-- **`SKILL.md`** — compact agent routing and safety contract.
-- **`telethon_api_inventory.py`** — read-only local introspection of installed raw Telethon requests and `TelegramClient` methods.
-- **`operation-playbook.md`** — maps everyday tasks to the right Telethon surface.
-- **`module-authoring.md`** — deterministic implementation checklist and skeleton for a smaller coding model.
-- **`session-bootstrap.md`** — user and agent runbook for local first-login, session import and verification.
-- **`verify_userbot_session.py`** — safe offline/online readiness checker that never prints or creates session contents.
-- **`test_session_checker.py`** — no-network regression test for the readiness checker.
-- **`validate_package.py`** — no-network package sanity check.
+The template has **28 reusable modules** and **23 registry routes**. A context-specific local publisher is deliberately excluded. The package has no account configuration, Telegram session, runtime files, chat exports, media, phone number, API credentials, bot token, or third-party keys.
 
-## Prerequisites
+## Current routed capabilities
 
-This package assumes a separate local userbot project with:
+The live project registry is authoritative. At the current package revision it routes:
 
-- Python virtual environment containing Telethon;
-- a `core.config` module which loads account profiles;
-- an already-authorized Telegram user session;
-- a module registry at `scripts/userbot_module_registry.py` when available.
+| Area | Existing routes |
+|---|---|
+| Read-only | members, history search, media preview/download plan, native transcription, native summary, message count, personal/group/channel dialog lists |
+| Messages | send, edit own message, forward exact IDs, inspect/pin/unpin exact message |
+| Identity and custom emoji | inspect/update profile, custom emoji status, create emoji pack, react using custom emoji |
+| Group work | inspect/change one member’s permissions, reactions, mention plan, cleanup own messages across one/all eligible chats |
+| Contacts | add one contact |
+| Channel publication | technical contract for an explicitly approved rich-media channel post; a new dedicated module is required when the registry has no route |
 
-Default paths are configurable:
-
-```bash
-export USERBOT_ROOT="$HOME/Documents/telethon-userbot"
-export USERBOT_PY="$USERBOT_ROOT/venv/bin/python"
-```
-
-The skill never stores API IDs, hashes, phone numbers, bot tokens, session files, chat IDs, or emoji document IDs.
-
-## Register a Telegram session
-
-Before the userbot can operate, the owner must register a local Telethon session. Follow [references/session-bootstrap.md](references/session-bootstrap.md) exactly.
-
-The short version:
-
-1. Create `accounts/main.env` locally with Telegram app credentials and a simple `SESSION_NAME`.
-2. Run the trusted local userbot launcher once and enter Telegram code/2FA **yourself in the terminal**.
-3. Run the offline readiness checker, then optional read-only `--online` authorization check.
-
-A session file, auth code, 2FA password, API hash and phone number must never be pasted into chat or committed to this repo.
-
-## Fast path for an agent
+Run the actual local router before every task; it does no Telegram I/O:
 
 ```bash
 cd "$USERBOT_ROOT"
-"$USERBOT_PY" scripts/userbot_module_registry.py \
-  --query 'find messages from Alice in our group yesterday'
+"$USERBOT_PY" scripts/userbot_module_registry.py --query '<request>'
 ```
 
-If a local module is returned, use it. For a new capability, inspect an exact installed request before coding:
+## Bounded self-improvement
 
-```bash
-"$USERBOT_PY" "$SKILL_DIR/scripts/telethon_api_inventory.py" \
-  --request messages.EditMessageRequest
-```
+When no route exists, the canonical `userbot` skill tells an agent to:
 
-## Custom emoji: four separate operations
+1. query the installed Telethon API with `telethon_api_inventory.py`;
+2. read the matching official Telethon/TL documentation;
+3. implement one narrow module using central account config and an existing authorized session;
+4. default every Telegram write to dry-run, require explicit `--execute`, and verify actual state afterwards;
+5. add fake-client tests, update the registry and `MODULES.md`, then run the full offline suite.
 
-“Custom emoji” is not one API. The skill separates:
+That is deliberate, bounded maintenance — not autonomous uncontrolled rewriting. The skill does not overwrite a working project, request secrets, run interactive login, or publish a new GitHub revision without explicit owner direction.
 
-| Intent | API surface |
-|---|---|
-| Emoji inline in a message/caption | `send_message` / `edit_message` + HTML `<tg-emoji>` entity |
-| Custom emoji reaction | `types.ReactionCustomEmoji` + `messages.SendReactionRequest` |
-| Profile/channel emoji status | `account.UpdateEmojiStatusRequest` / `channels.UpdateEmojiStatusRequest` |
-| Emoji pack lifecycle | `stickers.CreateStickerSetRequest`, add/replace/change/remove requests |
+## Session boundary
 
-Read the playbook before choosing one. Do not fabricate Telegram document access hashes or file references.
+The owner creates and authorizes a session locally. An agent never receives or operates Telegram login code, 2FA, `.session`, API hash, phone number, or account env contents.
 
-## Safety model
+Use [references/session-bootstrap.md](references/session-bootstrap.md) for the exact first-login, import, and verifier procedure.
 
-Every write follows:
+## Validate the repository
 
-```text
-resolve exact target → dry-run plan → explicit approval → --execute → read-back
-```
-
-The module authoring guide requires bounded batches, one FloodWait retry, immutable candidate IDs, fake-client tests, and actual server-state verification.
-
-## Validate this package
-
-No Telegram connection or network request is made:
+No command below contacts Telegram or makes a network request:
 
 ```bash
 python3 scripts/validate_package.py
+python3 scripts/test_bootstrap_userbot_project.py
 python3 scripts/test_session_checker.py
 ```
 
-## Updating the package
+## Install
 
-```bash
-git pull --ff-only
-python3 scripts/validate_package.py
-```
-
-Then replace or sync the installed skill directory according to [INSTALL.md](INSTALL.md), and start a new Hermes session or use `/reset`.
+Use [INSTALL.md](INSTALL.md). On a new Mac it installs one `userbot` skill and can bootstrap a new project from `templates/userbot/`. On a machine that already has a working project, it installs only the skill and leaves the project untouched.
 
 ## Private-use notice
 
-This repository is designed for private deployment. Do not publish userbot sessions, account configuration, runtime exports, media downloads, private chat archives, or secrets alongside it.
+Keep this repository private. Never add `.env`, account files, session databases, runtime data, downloaded media, archives, phone numbers, tokens, API hashes, access hashes, or document file references.
