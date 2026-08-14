@@ -39,5 +39,5 @@
 ## Security & Configuration Tips
 - Never commit `.env`, session files, API credentials, or phone numbers.
 - Keep `userbot.session` local only; rotate credentials if accidentally exposed.
-- Only `main.py` / `./run.sh` may use interactive `client.start()` for the owner’s first local Telegram login. Direct helpers must use `connect()` + `is_user_authorized()` and refuse login.
+- Only `main.py` / `./run.sh` may perform the owner’s interactive local Telegram login. Direct helpers must use `connect()` + `is_user_authorized()` and refuse login.
 - Never ask for, print, inspect, copy, upload, or commit Telegram login codes, 2FA passwords, `.session` contents, API hashes, or account env files. Session readiness is checked only through file metadata and optional `is_user_authorized()`.

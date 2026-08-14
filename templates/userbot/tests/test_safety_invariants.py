@@ -20,6 +20,12 @@ from modules import purge_me, react_recent_user_messages as reactions
 
 
 class ConfigIsolationTests(unittest.TestCase):
+    def test_normalizes_russian_phone_number_without_plus(self) -> None:
+        self.assertEqual(config._normalize_phone_number("79991234567"), "+79991234567")
+        self.assertEqual(config._normalize_phone_number("+79991234567"), "+79991234567")
+        with self.assertRaises(ValueError):
+            config._normalize_phone_number("89991234567")
+
     def test_rejects_path_like_account_names(self) -> None:
         for value in ("../other", "main/name", "has space", ".hidden"):
             with self.assertRaises(ValueError):

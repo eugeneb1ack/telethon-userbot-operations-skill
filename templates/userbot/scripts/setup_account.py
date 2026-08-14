@@ -19,6 +19,7 @@ ACCOUNT_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 SESSION_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
 API_HASH_RE = re.compile(r"[0-9a-fA-F]{32}\Z")
 PHONE_NUMBER_RE = re.compile(r"\+[1-9]\d{6,14}\Z")
+RUSSIAN_PHONE_NUMBER_WITHOUT_PLUS_RE = re.compile(r"7\d{10}\Z")
 
 
 @dataclass(frozen=True)
@@ -62,9 +63,13 @@ def _validate_api_hash(value: str) -> str:
 
 
 def _validate_phone_number(value: str) -> str:
-    if not PHONE_NUMBER_RE.fullmatch(value):
-        raise ValueError("Номер укажи в международном формате, например +79991234567")
-    return value
+    if PHONE_NUMBER_RE.fullmatch(value):
+        return value
+    if RUSSIAN_PHONE_NUMBER_WITHOUT_PLUS_RE.fullmatch(value):
+        return f"+{value}"
+    raise ValueError(
+        "Номер укажи в международном формате, например +79991234567 или 79991234567"
+    )
 
 
 def _validate_session_name(value: str) -> str:
@@ -85,7 +90,7 @@ def collect_account_values(
         "Telegram API hash (скрыт): ", secret_input, _validate_api_hash, output
     )
     phone_number = _prompt_until_valid(
-        "Номер телефона в международном формате: ",
+        "Номер телефона (+79991234567 или 79991234567): ",
         input_func,
         _validate_phone_number,
         output,

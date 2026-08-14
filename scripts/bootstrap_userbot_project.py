@@ -60,7 +60,7 @@ def payload(destination: Path, files: list[Path], *, dry_run: bool, ok: bool = T
         "dry_run": dry_run,
         "destination_exists": destination.exists(),
         "template_file_count": len(files),
-        "required_next_step": "Create accounts/main.env from accounts/main.env.example locally, then run ./run.sh --account main.",
+        "required_next_step": "Run python3 scripts/setup_account.py --account main locally, then run ./run.sh --account main.",
     }
     if error:
         result["error"] = error

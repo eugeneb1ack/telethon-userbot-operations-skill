@@ -20,7 +20,7 @@ It must never contain `.env`, account profiles, Telegram `.session` / `.session-
 
 ## Session registration boundary
 
-- Only the trusted local project launcher may run interactive `client.start()` for first login.
+- Only the trusted local project launcher may perform interactive login for the first session registration.
 - `scripts/setup_account.py` may collect account values only from the owner’s local terminal. It must not echo secrets, transmit them, or replace an existing profile without local `--replace` confirmation.
 - Agents and direct modules use `connect()` plus `is_user_authorized()` and refuse interactive login.
 - The owner types Telegram login codes and 2FA in their own local terminal. The agent must not request, display, transmit, store, or enter them.

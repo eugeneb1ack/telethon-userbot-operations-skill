@@ -21,8 +21,8 @@ SPEC.loader.exec_module(setup_account)
 
 
 class InteractiveAccountSetupTests(unittest.TestCase):
-    def test_collects_valid_values_after_invalid_attempts_and_hides_only_api_hash(self) -> None:
-        visible = iter(["not-a-number", "12345", "79991234567", "+79991234567", ""])
+    def test_collects_valid_values_after_invalid_attempts_and_normalizes_russian_number(self) -> None:
+        visible = iter(["not-a-number", "12345", "79991234567", ""])
         hidden = iter(["invalid", "a" * 32])
         feedback: list[str] = []
 
@@ -37,8 +37,14 @@ class InteractiveAccountSetupTests(unittest.TestCase):
         self.assertEqual(values.session_name, "main")
         self.assertEqual(values.phone_number, "+79991234567")
         self.assertEqual(values.api_hash, "a" * 32)
-        self.assertEqual(len(feedback), 3)
+        self.assertEqual(len(feedback), 2)
         self.assertTrue(all("a" * 32 not in message for message in feedback))
+
+    def test_accepts_international_number_with_or_without_plus_for_russia(self) -> None:
+        self.assertEqual(setup_account._validate_phone_number("+79991234567"), "+79991234567")
+        self.assertEqual(setup_account._validate_phone_number("79991234567"), "+79991234567")
+        with self.assertRaises(ValueError):
+            setup_account._validate_phone_number("89991234567")
 
     def test_writes_mode_600_and_refuses_accidental_overwrite(self) -> None:
         values = setup_account.AccountValues(12345, "b" * 32, "+79991234567", "main")

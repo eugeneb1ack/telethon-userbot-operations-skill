@@ -12,6 +12,8 @@ ACCOUNTS_DIR = BASE_DIR / "accounts"
 SHARED_ENV_FILE = ACCOUNTS_DIR / "_shared.env"
 _ACCOUNT_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 _SESSION_BASENAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
+_PHONE_NUMBER_RE = re.compile(r"\+[1-9]\d{6,14}\Z")
+_RUSSIAN_PHONE_NUMBER_WITHOUT_PLUS_RE = re.compile(r"7\d{10}\Z")
 
 
 @dataclass(frozen=True)
@@ -44,6 +46,17 @@ def _normalize_account_name(account: str | None) -> str | None:
 
 def _selected_account_name(account: str | None) -> str | None:
     return _normalize_account_name(account) or _normalize_account_name(os.getenv("USERBOT_ACCOUNT"))
+
+
+def _normalize_phone_number(value: str) -> str:
+    phone_number = value.strip()
+    if _PHONE_NUMBER_RE.fullmatch(phone_number):
+        return phone_number
+    if _RUSSIAN_PHONE_NUMBER_WITHOUT_PLUS_RE.fullmatch(phone_number):
+        return f"+{phone_number}"
+    raise ValueError(
+        "PHONE_NUMBER укажи в международном формате, например +79991234567 или 79991234567"
+    )
 
 
 def resolve_env_file(account: str | None = None) -> Path:
@@ -129,6 +142,7 @@ def load_settings(account: str | None = None) -> Settings:
             f"PHONE_NUMBER не задан в {env_path.name}. "
             f"Запусти python3 scripts/setup_account.py --account {account_name or 'main'}"
         )
+    phone_number = _normalize_phone_number(phone_number)
 
     try:
         api_id = int(api_id_raw)

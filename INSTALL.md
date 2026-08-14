@@ -81,7 +81,7 @@ python3 scripts/setup_account.py --account main
 ./run.sh --account main
 ```
 
-`setup_account.py` asks for API ID, API hash and phone number only in the local terminal, validates their format, writes `accounts/main.env` with permissions `600`, hides the API hash, and leaves the phone number visible for the owner to verify. It refuses to overwrite an existing account profile unless the owner uses `--replace` and types `REPLACE` locally. Telegram code and 2FA are entered **only by the owner in that local terminal**. Never paste them, the `.session`, API hash, phone number, or `accounts/main.env` into an agent chat or GitHub.
+`setup_account.py` asks for API ID, API hash and phone number only in the local terminal, validates their format, writes `accounts/main.env` with permissions `600`, hides the API hash, and leaves the phone number visible for the owner to verify. A Russian number may be entered as either `+79991234567` or `79991234567`; the latter is normalized to the former before it is saved. It refuses to overwrite an existing account profile unless the owner uses `--replace` and types `REPLACE` locally. The launcher reports Telegram's selected delivery route before asking for a code. Telegram code and 2FA are entered **only by the owner in that local terminal**. Never paste them, the `.session`, API hash, phone number, or `accounts/main.env` into an agent chat or GitHub.
 
 Then verify safely:
 
