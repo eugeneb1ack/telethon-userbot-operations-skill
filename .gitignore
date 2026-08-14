@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Never package runtime/account material
+.env
+accounts/
+runtime/
+data/
+*.session
+*.session-journal
+*.sqlite3
+*.db
+
+# Local checkout artifacts
+.venv/
+venv/
