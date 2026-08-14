@@ -1,6 +1,6 @@
 # Installation
 
-This package installs exactly one Hermes skill: **`userbot`**. It never replaces an existing local userbot project.
+This package installs exactly one Codex skill: **`userbot`**. It never replaces an existing local userbot project.
 
 ## 1. Clone and validate the private package
 
@@ -18,12 +18,12 @@ These checks have no Telegram network I/O.
 
 ## 2. Install the one canonical skill
 
-For the default Hermes profile:
+Install it in Codex's user skill directory:
 
 ```bash
 PACKAGE="$HOME/telethon-userbot-skill"
-TARGET="$HOME/.hermes/skills/openclaw-imports/userbot"
-BACKUPS="$HOME/.hermes/skill-backups"
+TARGET="$HOME/.codex/skills/userbot"
+BACKUPS="$HOME/.codex/skill-backups"
 
 if [ -e "$TARGET" ]; then
   mkdir -p "$BACKUPS"
@@ -33,29 +33,11 @@ mkdir -p "$TARGET"
 rsync -a --exclude '.git' --exclude '.DS_Store' "$PACKAGE/" "$TARGET/"
 
 export USERBOT_SKILL_DIR="$TARGET"
-hermes skills list | grep -E '(^|/)userbot'
+test -f "$TARGET/SKILL.md"
+rg -n '^name: userbot$' "$TARGET/SKILL.md"
 ```
 
-The backup sits **outside** `~/.hermes/skills/`, so Hermes cannot discover a stale second copy. Start a new Hermes session or use `/reset` after installation.
-
-For a named profile, choose its profile-local target instead:
-
-```bash
-PROFILE=<profile-name>
-PACKAGE="$HOME/telethon-userbot-skill"
-TARGET="$HOME/.hermes/profiles/$PROFILE/skills/openclaw-imports/userbot"
-BACKUPS="$HOME/.hermes/profiles/$PROFILE/skill-backups"
-
-if [ -e "$TARGET" ]; then
-  mkdir -p "$BACKUPS"
-  mv "$TARGET" "$BACKUPS/userbot-$(date +%Y%m%d-%H%M%S)"
-fi
-mkdir -p "$TARGET"
-rsync -a --exclude '.git' --exclude '.DS_Store' "$PACKAGE/" "$TARGET/"
-
-export USERBOT_SKILL_DIR="$TARGET"
-hermes -p "$PROFILE" skills list | grep -E '(^|/)userbot'
-```
+The backup sits **outside** `~/.codex/skills/`, so Codex cannot discover a stale second copy. Start a new Codex task after installation so it loads the installed skill.
 
 ## 3. Existing userbot project: do not bootstrap
 

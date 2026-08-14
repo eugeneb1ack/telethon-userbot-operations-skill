@@ -14,7 +14,7 @@ It must never contain `.env`, account profiles, Telegram `.session` / `.session-
 
 ## Installation and bootstrap boundary
 
-- Package installation changes only a Hermes skill directory.
+- Package installation changes only the Codex `userbot` skill directory.
 - `bootstrap_userbot_project.py` creates a project only when its destination does not exist. It refuses existing paths and must never be modified into an in-place upgrade tool.
 - A working userbot project is maintained separately. Do not copy runtime state or account material back into this package.
 

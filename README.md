@@ -1,6 +1,6 @@
 # Telethon Userbot Skill
 
-Private, portable Hermes skill **`userbot`** for a local [Telethon](https://docs.telethon.dev/) userbot.
+Private, portable Codex skill **`userbot`** for a local [Telethon](https://docs.telethon.dev/) userbot.
 
 This repository is the single distribution point. It contains exactly one active skill name, its safe operating rules, current module source template, session onboarding, API inventory, and offline checks.
 

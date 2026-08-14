@@ -1,7 +1,6 @@
 ---
 name: userbot
-description: Use for any local Telethon userbot request.
-version: 2.1.0
+description: Safely operate and extend a local Telethon userbot through its existing modules. Use for requests to inspect Telegram data, send or modify messages, manage groups or profiles, work with media, bootstrap a local userbot project, verify an authorized session, or add one guarded Telethon module.
 ---
 
 # Telethon Userbot
@@ -16,10 +15,8 @@ This is the **single canonical skill** for the local Telethon userbot.
 ```bash
 export USERBOT_ROOT="${USERBOT_ROOT:-$HOME/Documents/telethon-userbot}"
 export USERBOT_PY="$USERBOT_ROOT/venv/bin/python"
-export USERBOT_SKILL_DIR="${USERBOT_SKILL_DIR:-$HOME/.hermes/skills/openclaw-imports/userbot}"
+export USERBOT_SKILL_DIR="${USERBOT_SKILL_DIR:-$HOME/.codex/skills/userbot}"
 ```
-
-For a named Hermes profile, set `USERBOT_SKILL_DIR` to that profile’s installed `userbot` directory explicitly.
 
 ## Portable bootstrap
 

@@ -455,7 +455,7 @@ def main() -> int:
     parser.add_argument("--output", help="Compact JSON archive path")
     parser.add_argument("--summary-from", help="Generate summary from an existing compact JSON archive")
     parser.add_argument("--json", action="store_true", help="Print compact JSON instead of summary text")
-    parser.add_argument("--do-summary", action="store_true", help="Emit compact context for the current Hermes agent")
+    parser.add_argument("--do-summary", action="store_true", help="Emit compact context for the current agent")
     args = parser.parse_args()
     try:
         if args.summary_from:

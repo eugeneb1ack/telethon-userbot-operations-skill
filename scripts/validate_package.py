@@ -44,6 +44,7 @@ SECRET_PATTERNS = (
     re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"(?i)(?:api_hash|bot_token|password|phone_number)\s*=\s*[\"'][^\"']{12,}[\"']"),
 )
+LEGACY_RUNTIME_PATTERN = re.compile(rf"\b{''.join(('h', 'ermes'))}\b", re.IGNORECASE)
 
 
 def source_files() -> list[Path]:
@@ -61,12 +62,23 @@ def main() -> int:
         return 1
 
     skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-    if not skill.startswith("---\n") or "\nname: userbot\n" not in skill:
-        print("SKILL.md frontmatter is missing or has the wrong name", file=sys.stderr)
+    frontmatter, separator, _ = skill.partition("\n---\n")
+    frontmatter_lines = frontmatter.splitlines()
+    expected_frontmatter_keys = ["name", "description"]
+    actual_frontmatter_keys = [line.partition(":")[0] for line in frontmatter_lines[1:] if line]
+    if (
+        frontmatter_lines[:1] != ["---"]
+        or not separator
+        or actual_frontmatter_keys != expected_frontmatter_keys
+        or frontmatter_lines[1] != "name: userbot"
+        or not frontmatter_lines[2].partition(":")[2].strip()
+    ):
+        print("SKILL.md frontmatter must contain name=userbot and a description only", file=sys.stderr)
         return 1
 
     blocked = []
     secret_hits = []
+    legacy_runtime_hits = []
     for path in ROOT.rglob("*"):
         if ".git" in path.parts:
             continue
@@ -81,11 +93,16 @@ def main() -> int:
             continue
         if any(pattern.search(text) for pattern in SECRET_PATTERNS):
             secret_hits.append(str(path.relative_to(ROOT)))
+        if LEGACY_RUNTIME_PATTERN.search(text):
+            legacy_runtime_hits.append(str(path.relative_to(ROOT)))
     if blocked:
         print(f"Forbidden runtime or secret-bearing paths: {', '.join(sorted(blocked))}", file=sys.stderr)
         return 1
     if secret_hits:
         print(f"Potential credential values in package: {', '.join(sorted(secret_hits))}", file=sys.stderr)
+        return 1
+    if legacy_runtime_hits:
+        print(f"Legacy runtime references in package: {', '.join(sorted(legacy_runtime_hits))}", file=sys.stderr)
         return 1
 
     template_modules = list((TEMPLATE / "modules").glob("*.py"))

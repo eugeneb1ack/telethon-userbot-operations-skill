@@ -32,7 +32,7 @@
 ```bash
 cd /Users/johndoe/Documents/telethon-userbot
 PY=venv/bin/python
-SKILL=${USERBOT_SKILL_DIR:-$HOME/.hermes/skills/openclaw-imports/userbot}
+SKILL=${USERBOT_SKILL_DIR:-$HOME/.codex/skills/userbot}
 
 # Точная сигнатура raw-запроса + официальная TL-ссылка
 $PY "$SKILL/scripts/telethon_api_inventory.py" \
@@ -255,7 +255,7 @@ Implement exactly one new guarded Telethon userbot module in
 
 First inspect current project modules and query the installed Telethon API with:
 PY=venv/bin/python
-SKILL=${USERBOT_SKILL_DIR:-$HOME/.hermes/skills/openclaw-imports/userbot}
+SKILL=${USERBOT_SKILL_DIR:-$HOME/.codex/skills/userbot}
 $PY "$SKILL/scripts/telethon_api_inventory.py" --request <namespace.Request>
 
 Follow docs/TELETHON_MODULE_AUTHORING.md exactly.
