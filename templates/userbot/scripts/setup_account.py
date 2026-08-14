@@ -85,8 +85,8 @@ def collect_account_values(
         "Telegram API hash (скрыт): ", secret_input, _validate_api_hash, output
     )
     phone_number = _prompt_until_valid(
-        "Номер телефона в международном формате (скрыт): ",
-        secret_input,
+        "Номер телефона в международном формате: ",
+        input_func,
         _validate_phone_number,
         output,
     )
@@ -126,7 +126,7 @@ def write_account_file(path: Path, values: AccountValues, *, replace: bool) -> N
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
-        description="Interactively create a local Telegram account profile without echoing secrets"
+        description="Interactively create a local Telegram account profile while hiding the API hash"
     )
     result.add_argument("--account", default="main", help="Account profile name; default: main")
     result.add_argument(

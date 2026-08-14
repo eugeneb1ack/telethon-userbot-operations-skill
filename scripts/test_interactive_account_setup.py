@@ -21,9 +21,9 @@ SPEC.loader.exec_module(setup_account)
 
 
 class InteractiveAccountSetupTests(unittest.TestCase):
-    def test_collects_valid_values_after_invalid_attempts_without_echoing_secrets(self) -> None:
-        visible = iter(["not-a-number", "12345", ""])
-        hidden = iter(["invalid", "a" * 32, "79991234567", "+79991234567"])
+    def test_collects_valid_values_after_invalid_attempts_and_hides_only_api_hash(self) -> None:
+        visible = iter(["not-a-number", "12345", "79991234567", "+79991234567", ""])
+        hidden = iter(["invalid", "a" * 32])
         feedback: list[str] = []
 
         values = setup_account.collect_account_values(

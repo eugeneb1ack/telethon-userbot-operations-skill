@@ -53,7 +53,7 @@ Load `references/session-bootstrap.md` for setup, login, importing a `.session`,
 
 - Only trusted local `./run.sh --account <name>` may start interactive login.
 - The owner types Telegram code and 2FA directly into that terminal.
-- For a new or placeholder account profile, have the owner run `python3 scripts/setup_account.py --account <name>` locally. It validates the values and never displays the hash or phone number.
+- For a new or placeholder account profile, have the owner run `python3 scripts/setup_account.py --account <name>` locally. It validates the values, hides the API hash, and keeps the phone number visible for the owner to verify.
 - Agents never ask for, read, type, copy, upload, or commit codes, passwords, `.session`, API hash, phone numbers, or account env files.
 - Check readiness without exposing contents:
 

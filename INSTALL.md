@@ -81,7 +81,7 @@ python3 scripts/setup_account.py --account main
 ./run.sh --account main
 ```
 
-`setup_account.py` asks for API ID, API hash and phone number only in the local terminal, validates their format, writes `accounts/main.env` with permissions `600`, and does not echo the hash or phone number. It refuses to overwrite an existing account profile unless the owner uses `--replace` and types `REPLACE` locally. Telegram code and 2FA are entered **only by the owner in that local terminal**. Never paste them, the `.session`, API hash, phone number, or `accounts/main.env` into an agent chat or GitHub.
+`setup_account.py` asks for API ID, API hash and phone number only in the local terminal, validates their format, writes `accounts/main.env` with permissions `600`, hides the API hash, and leaves the phone number visible for the owner to verify. It refuses to overwrite an existing account profile unless the owner uses `--replace` and types `REPLACE` locally. Telegram code and 2FA are entered **only by the owner in that local terminal**. Never paste them, the `.session`, API hash, phone number, or `accounts/main.env` into an agent chat or GitHub.
 
 Then verify safely:
 
