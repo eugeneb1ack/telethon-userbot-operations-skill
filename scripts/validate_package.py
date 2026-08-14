@@ -18,6 +18,7 @@ REQUIRED = (
     "SECURITY.md",
     ".gitignore",
     "references/operation-playbook.md",
+    "references/gateway-webhooks.md",
     "references/channel-rich-publishing.md",
     "references/module-authoring.md",
     "references/session-bootstrap.md",
@@ -34,7 +35,13 @@ REQUIRED = (
     "templates/userbot/MODULES.md",
     "templates/userbot/ACCOUNT.env.example",
     "templates/userbot/core/config.py",
+    "templates/userbot/core/event_store.py",
+    "templates/userbot/core/gateway.py",
+    "templates/userbot/scripts/setup_gateway.py",
+    "templates/userbot/scripts/install_gateway_service.py",
     "templates/userbot/scripts/setup_account.py",
+    "templates/userbot/scripts/userbotctl.py",
+    "templates/userbot/scripts/userbotd.py",
     "templates/userbot/scripts/userbot_module_registry.py",
 )
 FORBIDDEN_NAMES = {".env", "accounts", "runtime", "data", "venv", ".venv", "__pycache__"}

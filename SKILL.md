@@ -1,20 +1,21 @@
 ---
 name: userbot
-description: Safely operate and extend a local Telethon userbot through its existing modules. Use for requests to inspect Telegram data, send or modify messages, manage groups or profiles, work with media, bootstrap a local userbot project, verify an authorized session, or add one guarded Telethon module.
+description: Operate and extend a local agent-neutral Telethon userbot through its persistent gateway and existing modules. Use to inspect Telegram data, receive direct-message/mention/reply events, send or modify messages, manage groups or profiles, configure signed webhooks, bootstrap a userbot, verify a session, or add one guarded Telethon module.
 ---
 
 # Telethon Userbot
 
-This is the **single canonical skill** for the local Telethon userbot.
+This is the single canonical, agent-neutral skill for the local Telethon userbot.
 
 - Project runtime: `$USERBOT_ROOT`, default `$HOME/Documents/telethon-userbot`.
 - Python: `$USERBOT_PY`, default `$USERBOT_ROOT/venv/bin/python`.
-- Existing userbot modules are the execution layer.
-- This skill routes a request, enforces safety, and says when a new module is justified.
+- The persistent gateway owns the Telegram connection and serves local JSON over a Unix socket.
+- Existing modules remain the compatibility and extension layer.
 
 ```bash
 export USERBOT_ROOT="${USERBOT_ROOT:-$HOME/Documents/telethon-userbot}"
 export USERBOT_PY="$USERBOT_ROOT/venv/bin/python"
+# Other agents override this with their own installed skill directory.
 export USERBOT_SKILL_DIR="${USERBOT_SKILL_DIR:-$HOME/.codex/skills/userbot}"
 ```
 
@@ -34,7 +35,26 @@ python3 "$USERBOT_SKILL_DIR/scripts/bootstrap_userbot_project.py" \
   --destination "$USERBOT_ROOT" --execute
 ```
 
-The bootstrap refuses an existing destination. Never use it to overwrite, merge into, or “upgrade” a working userbot. The template contains source code and 23 registry routes, but no `.env`, session, runtime data, or account material.
+The bootstrap refuses an existing destination. Never use it to overwrite, merge into, or “upgrade” a working userbot. The template contains source code and a generated registry catalog, but no `.env`, session, runtime data, or account material.
+
+## Fast path
+
+Prefer the already-running local gateway. These commands use no new Telegram connection:
+
+```bash
+cd "$USERBOT_ROOT"
+"$USERBOT_PY" scripts/userbotctl.py --account main status
+"$USERBOT_PY" scripts/userbotctl.py --account main recent-dms --limit 3
+"$USERBOT_PY" scripts/userbotctl.py --account main events list --unread
+```
+
+If the socket is unavailable, start it on demand without login prompts or autostart, then retry:
+
+```bash
+"$USERBOT_PY" scripts/userbotd.py --account main start
+```
+
+Routine read-only gateway calls and local event acknowledgements may proceed immediately. If on-demand startup fails, use the registry's read-only fallback; do not request a separate conversational confirmation merely to connect or read. Stop the detached gateway with `userbotd.py --account main stop`. Never install autostart unless the owner explicitly requests it.
 
 ## One route for every request
 
@@ -45,7 +65,7 @@ cd "$USERBOT_ROOT"
 "$USERBOT_PY" scripts/userbot_module_registry.py --query '<natural-language request>'
 ```
 
-Use the returned CLI, not an ad-hoc script. The registry covers members, history search, downloads, transcription, summaries, profile/custom emoji status, messages, forwarding, pins, group permissions, reactions, contacts, and cleanup.
+Use the single returned command, not an ad-hoc script. The registry prefers gateway routes for common reads and existing guarded modules for the rest.
 
 ## Session onboarding
 
@@ -68,9 +88,9 @@ Load `references/session-bootstrap.md` for setup, login, importing a `.session`,
 
 ## Runtime safety contract
 
-- Direct helpers use `load_settings()` + `apply_runtime_env()`, `connect()`, `is_user_authorized()`, and `disconnect()` in `finally`. Never `client.start()`.
-- Read-only work may proceed after exact source/target resolution.
-- Telegram writes and local downloads plan first. Add `--execute` only after explicit approval for the exact external action.
+- The gateway is the preferred session owner. Direct helpers are fallback and use `connect()` + `is_user_authorized()` without interactive login.
+- Read-only Telegram work and contained local outputs may proceed once required inputs are known.
+- Sending, editing, deleting, forwarding, reacting, changing permissions/profile, or otherwise writing to Telegram requires an exact preview and explicit approval before `--execute`.
 - Freeze IDs before batches. Fail closed on ambiguity. Respect `FloodWaitError` once per unit. Read back final state.
 - Never report an attempted request as success.
 
@@ -86,6 +106,8 @@ Load `references/session-bootstrap.md` for setup, login, importing a `.session`,
 4. Add one focused module under `modules/`, then update the registry and `MODULES.md`.
 
 This is the bounded self-improvement loop: reuse first; otherwise inspect the installed API and official documentation; add one tested module; update its route and docs. Do not silently rewrite unrelated modules, turn it into a generic Telegram API wrapper, or publish a new package revision without an explicit owner request.
+
+For the persistent gateway, on-demand process, event inbox, webhook payload, HMAC verification, and explicitly optional autostart, load `references/gateway-webhooks.md`.
 
 For custom emoji, distinguish inline entities, reactions, profile/channel status, and emoji packs. Use `references/operation-playbook.md` before choosing an API.
 

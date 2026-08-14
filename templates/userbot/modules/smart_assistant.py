@@ -12,7 +12,6 @@ import tempfile
 import shutil
 from telethon import TelegramClient, events, Button, functions, types
 from pathlib import Path
-from dotenv import load_dotenv
 import speech_recognition as sr
 
 logging.basicConfig(level=logging.INFO)
@@ -20,9 +19,6 @@ logger = logging.getLogger(__name__)
 
 # Paths
 BASE_DIR = Path(__file__).resolve().parent.parent
-env_file = Path(os.getenv("USERBOT_ENV_FILE", BASE_DIR / ".env"))
-load_dotenv(env_file)
-
 BOT_TOKEN = os.getenv("bot_token")
 LOG_GROUP_ID_RAW = os.getenv("Group_autorespomder")
 OPENROUTER_KEY = os.getenv("Open_Router_Key")
@@ -32,10 +28,8 @@ memory_root = Path(os.getenv("USERBOT_MEMORY_DIR", runtime_dir / "memory"))
 transcripts_root = Path(os.getenv("USERBOT_TRANSCRIPTS_DIR", runtime_dir / "data" / "transcripts"))
 
 DATA_DIR = transcripts_root
-DATA_DIR.mkdir(parents=True, exist_ok=True)
 CONFIG_FILE = memory_root / "userbot_config.json"
 PEOPLE_DIR = memory_root / "people"
-PEOPLE_DIR.mkdir(parents=True, exist_ok=True)
 SOUL_FILE = memory_root / "SOUL.md"
 
 # Config Management
@@ -65,6 +59,7 @@ def save_config(config_data):
         "user_styles": config_data.get("user_styles", {}),
         "global_prompt": config_data.get("global_prompt", "")
     }
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(clean, f, ensure_ascii=False, indent=2)
 
@@ -97,6 +92,7 @@ def save_user_memory(user_id, data):
         "relation": (data.get("relation") or "").strip(),
         "last_topics": [str(x).strip() for x in data.get("last_topics", []) if str(x).strip()][-3:]
     }
+    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(clean, f, ensure_ascii=False, indent=2)
 
@@ -115,6 +111,7 @@ async def gif_search_and_download(query: str) -> str | None:
             if data and len(data) > 0:
                 gif_url = data[0].get("url")
                 path = DATA_DIR / f"gif_{random.randint(0,1000)}.gif"
+                path.parent.mkdir(parents=True, exist_ok=True)
                 async with aiohttp.ClientSession() as session:
                     async with session.get(gif_url) as resp:
                         if resp.status == 200:

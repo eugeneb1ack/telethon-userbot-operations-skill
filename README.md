@@ -1,8 +1,8 @@
 # Telethon Userbot Skill
 
-Private, portable Codex skill **`userbot`** for a local [Telethon](https://docs.telethon.dev/) userbot.
+Private, portable, agent-neutral skill **`userbot`** for a local [Telethon](https://docs.telethon.dev/) userbot.
 
-This repository is the single distribution point. It contains exactly one active skill name, its safe operating rules, current module source template, session onboarding, API inventory, and offline checks.
+This repository is the single distribution point. It contains one active skill name, a persistent local JSON gateway, a durable Telegram event inbox, signed outbound webhooks, the current module source template, session onboarding, API inventory, and offline checks.
 
 It is not a generic Telegram API cannon. It routes a request to an existing module first; only then does it permit one small, tested extension built against the installed Telethon API and official Telethon/TL documentation.
 
@@ -15,6 +15,7 @@ telethon-userbot-operations-skill/
 ├── SECURITY.md
 ├── references/
 │   ├── session-bootstrap.md
+│   ├── gateway-webhooks.md
 │   ├── module-authoring.md
 │   ├── operation-playbook.md
 │   └── channel-rich-publishing.md
@@ -31,7 +32,20 @@ telethon-userbot-operations-skill/
     └── docs/
 ```
 
-The template has **28 reusable modules** and **23 registry routes**. A context-specific local publisher is deliberately excluded. The package has no account configuration, Telegram session, runtime files, chat exports, media, phone number, API credentials, bot token, or third-party keys.
+The registry and module catalog are validated from source instead of documented with a manually maintained count. A context-specific local publisher is deliberately excluded. The package has no account configuration, Telegram session, runtime files, chat exports, media, phone number, API credentials, bot token, webhook secret, or third-party keys.
+
+## Fast persistent access
+
+`main.py` owns the authorized Telegram session continuously. Agents use a local mode-`0600` Unix socket instead of reconnecting for every common read:
+
+```bash
+cd "$USERBOT_ROOT"
+venv/bin/python scripts/userbotctl.py --account main status
+venv/bin/python scripts/userbotctl.py --account main recent-dms --limit 3
+venv/bin/python scripts/userbotctl.py --account main events list --unread
+```
+
+Incoming direct messages, mentions and replies are deduplicated in a local SQLite inbox. An optional HMAC-signed HTTPS webhook delivers the same compact events to any external workflow or agent. See [references/gateway-webhooks.md](references/gateway-webhooks.md).
 
 ## Current routed capabilities
 
@@ -81,9 +95,9 @@ python3 scripts/test_bootstrap_userbot_project.py
 python3 scripts/test_session_checker.py
 ```
 
-## Install
+## Install in Codex or another agent
 
-Use [INSTALL.md](INSTALL.md). On a new Mac it installs one `userbot` skill and can bootstrap a new project from `templates/userbot/`. On a machine that already has a working project, it installs only the skill and leaves the project untouched.
+Use [INSTALL.md](INSTALL.md). Codex uses `~/.codex/skills/userbot`; another agent can use its documented skill directory or call the JSON CLI directly. All agents share one runtime and must not open separate copies of `userbot.session`.
 
 ## Private-use notice
 

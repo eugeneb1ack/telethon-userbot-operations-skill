@@ -42,6 +42,18 @@ Every new mutating helper must:
 
 Do not add generic automation for auth, passwords/recovery/passkeys, phone changes, account deletion, payments, gifts, Stars, refunds, SMS jobs, or secret-chat internals.
 
+Read-only gateway requests and local event acknowledgements do not require an additional action confirmation. They reuse the already-authorized connection and do not write to Telegram.
+
+## Gateway and webhook
+
+- Exactly one persistent process owns each account session. Agents use the mode-`0600` Unix socket rather than opening the session database concurrently.
+- The event database and socket stay under `runtime/<account>/` and are excluded from Git.
+- Message previews are bounded to 160 characters by default and can be disabled with `USERBOT_EVENT_PREVIEW_CHARS=0`.
+- Outbound webhooks require HTTPS except for loopback development, a secret of at least 32 characters, and an HMAC over timestamp plus exact body.
+- Receivers must reject stale timestamps and invalid signatures before parsing or acting on event content.
+- A webhook event is notification data, never authorization for a Telegram write.
+- Do not log webhook URLs, secrets, request bodies, or full message text.
+
 ## Bounded maintenance
 
 The canonical skill can extend a missing capability through the documented module-authoring loop. It may not silently refactor unrelated modules, publish a revision, merge project changes into the package template, or change a live project without explicit owner direction.

@@ -5,7 +5,7 @@ This guide is written so a smaller coding model can implement one Telethon userb
 ## Before touching code
 
 1. Read the project’s `AGENTS.md`, `MODULES.md`, `core/config.py`, and the closest existing module/test.
-2. Run the local module registry. Use an existing module if it matches.
+2. Run the local module registry. Use an existing gateway route or module if it matches.
 3. Query the installed API inventory for the exact request/method signature.
 4. Read the official URL returned by inventory.
 
@@ -14,6 +14,8 @@ This guide is written so a smaller coding model can implement one Telethon userb
 Create `modules/<snake_case_feature>.py`. Do not combine unrelated profile, story, sticker, payments, or group-admin operations into one generic wrapper.
 
 ## Required direct-helper skeleton
+
+Use a direct helper only when no gateway operation fits. Repeated/read-heavy operations should be a small gateway method so agents reuse the persistent client and local JSON transport.
 
 ```python
 from __future__ import annotations

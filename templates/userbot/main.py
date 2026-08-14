@@ -10,6 +10,7 @@ from telethon import TelegramClient
 from telethon import errors
 
 from core.config import BASE_DIR, apply_runtime_env, load_settings
+from core.gateway import UserbotGateway, load_gateway_options
 from core.module_loader import load_modules
 
 logging.basicConfig(
@@ -114,10 +115,25 @@ def parse_args() -> argparse.Namespace:
         "--account",
         help="Имя аккаунта из accounts/<name>.env (например: main, second)",
     )
+    parser.add_argument(
+        "--no-gateway",
+        action="store_true",
+        help="Emergency mode: disable the local socket, event inbox and webhook",
+    )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Use an existing authorized session and fail instead of starting login",
+    )
     return parser.parse_args()
 
 
-async def run(account: str | None = None) -> None:
+async def run(
+    account: str | None = None,
+    *,
+    no_gateway: bool = False,
+    non_interactive: bool = False,
+) -> None:
     settings = load_settings(account=account)
     apply_runtime_env(settings)
 
@@ -125,25 +141,54 @@ async def run(account: str | None = None) -> None:
 
     account_label = settings.account or "legacy"
     print(f"Запуск юзербота (account={account_label})...")
-    await sign_in_interactively(client, settings.phone_number)
+    if non_interactive:
+        await client.connect()
+        restrict_session_permissions(client)
+        if not await client.is_user_authorized():
+            raise RuntimeError(
+                "Telegram session is not authorized; run ./run.sh --account <name> interactively once"
+            )
+    else:
+        await sign_in_interactively(client, settings.phone_number)
 
     me = await client.get_me()
     print(f"Юзербот запущен! Аккаунт: {me.first_name} (@{me.username})")
 
-    loaded = await load_modules(client, Path(BASE_DIR) / "modules")
-    if loaded:
-        logger.info("Загружено модулей: %s", ", ".join(loaded))
-    else:
-        logger.info("Модули не найдены. Запуск в чистом режиме.")
+    gateway: UserbotGateway | None = None
+    options = load_gateway_options(settings)
+    if options.enabled and not no_gateway:
+        gateway = UserbotGateway(client, settings, options)
+        await gateway.start()
+        # Register the durable inbox before fetching missed updates. Existing
+        # behavior modules are loaded afterwards, so catch-up cannot replay old
+        # messages into an auto-responder.
+        await client.catch_up()
+        print(f"Локальный gateway: {options.socket_path}")
 
-    print("Юзербот работает. Нажмите Ctrl+C для остановки.")
-    await client.run_until_disconnected()
+    try:
+        loaded = await load_modules(client, Path(BASE_DIR) / "modules")
+        if loaded:
+            logger.info("Загружено модулей: %s", ", ".join(loaded))
+        else:
+            logger.info("Модули не найдены. Запуск в чистом режиме.")
+
+        print("Юзербот работает. Нажмите Ctrl+C для остановки.")
+        await client.run_until_disconnected()
+    finally:
+        if gateway is not None:
+            await gateway.stop()
 
 
 if __name__ == "__main__":
     cli_args = parse_args()
     try:
-        asyncio.run(run(account=cli_args.account))
+        asyncio.run(
+            run(
+                account=cli_args.account,
+                no_gateway=cli_args.no_gateway,
+                non_interactive=cli_args.non_interactive,
+            )
+        )
     except ValueError as exc:
         raise SystemExit(str(exc))
     except KeyboardInterrupt:

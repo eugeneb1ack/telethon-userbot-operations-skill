@@ -2,7 +2,7 @@
 
 Этот документ — инструкция для модели, которая реализует новую функцию в `/Users/johndoe/Documents/telethon-userbot`.
 
-Цель: сделать **один маленький, проверяемый модуль**, а не абстрактную обёртку над всем Telegram API.
+Цель: добавить **одну маленькую, проверяемую операцию** в persistent gateway или отдельный модуль, а не абстрактную обёртку над всем Telegram API.
 
 ## 0. До кода: выбери правильную границу
 
@@ -32,7 +32,7 @@
 ```bash
 cd /Users/johndoe/Documents/telethon-userbot
 PY=venv/bin/python
-SKILL=${USERBOT_SKILL_DIR:-$HOME/.codex/skills/userbot}
+SKILL=${USERBOT_SKILL_DIR:?set USERBOT_SKILL_DIR to the installed userbot skill}
 
 # Точная сигнатура raw-запроса + официальная TL-ссылка
 $PY "$SKILL/scripts/telethon_api_inventory.py" \
@@ -50,6 +50,8 @@ $PY "$SKILL/scripts/telethon_api_inventory.py" \
 После inventory открой указанную официальную страницу `tl.telethon.dev` или `docs.telethon.dev`. Не выдумывай поля constructor-а, права админа, типы реакций или ошибку “по памяти”.
 
 ## 2. Сначала проверь, не существует ли функция
+
+Частые read-only операции должны использовать `scripts/userbotctl.py` и уже запущенный клиент. Новый direct helper нужен только когда gateway/registry ещё не покрывают запрос.
 
 ```bash
 cd /Users/johndoe/Documents/telethon-userbot
@@ -255,7 +257,7 @@ Implement exactly one new guarded Telethon userbot module in
 
 First inspect current project modules and query the installed Telethon API with:
 PY=venv/bin/python
-SKILL=${USERBOT_SKILL_DIR:-$HOME/.codex/skills/userbot}
+SKILL=${USERBOT_SKILL_DIR:?set USERBOT_SKILL_DIR to the installed userbot skill}
 $PY "$SKILL/scripts/telethon_api_inventory.py" --request <namespace.Request>
 
 Follow docs/TELETHON_MODULE_AUTHORING.md exactly.

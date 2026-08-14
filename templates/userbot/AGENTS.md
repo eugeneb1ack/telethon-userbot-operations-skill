@@ -23,12 +23,12 @@
 - Keep modules small and focused: one command/feature per file in `modules/`.
 - Every module must expose `register(client)` so the loader can attach handlers.
 - Prefer structured logging (`logging.getLogger(__name__)`) over ad-hoc prints for diagnostics.
-- Before inventing a module or one-off, run `venv/bin/python scripts/userbot_module_registry.py --query '<natural request>'`; use the returned CLI when it exists. For genuinely new Telethon operations, follow `docs/TELETHON_MODULE_AUTHORING.md`. It defines the API lookup, dry-run, verification, and fake-client test contract.
+- For common reads, use `venv/bin/python scripts/userbotctl.py --account main ...`; it reuses the persistent client through a local Unix socket. Before inventing a module or one-off, run `venv/bin/python scripts/userbot_module_registry.py --query '<natural request>'` and use the single returned command. For genuinely new operations, follow `docs/TELETHON_MODULE_AUTHORING.md`.
 
 ## Testing Guidelines
 - The offline regression suite is `venv/bin/python -m unittest discover -s tests -v`.
 - Minimum validation for each change: compile all source, run the offline suite, run every module's `--help`, and load modules against a fake client so no Telegram session is touched.
-- Do not use a real `.env` or Telegram network call as a default smoke test. Test authorized-session behavior only when the user explicitly requests live verification.
+- Do not use a real `.env` or Telegram network call as a default code smoke test. Routine user-requested read-only operations may use the already-running gateway without another confirmation.
 - Add focused `unittest` cases under `tests/` for new safety guards, parsers, pure planning logic, and mocked client behavior.
 
 ## Commit & Pull Request Guidelines
@@ -39,5 +39,5 @@
 ## Security & Configuration Tips
 - Never commit `.env`, session files, API credentials, or phone numbers.
 - Keep `userbot.session` local only; rotate credentials if accidentally exposed.
-- Only `main.py` / `./run.sh` may perform the owner’s interactive local Telegram login. Direct helpers must use `connect()` + `is_user_authorized()` and refuse login.
+- Only `main.py` / `./run.sh` may perform interactive login. In normal operation one gateway process owns the session; agents use `userbotctl.py`. Direct helpers remain a non-interactive fallback.
 - Never ask for, print, inspect, copy, upload, or commit Telegram login codes, 2FA passwords, `.session` contents, API hashes, or account env files. Session readiness is checked only through file metadata and optional `is_user_authorized()`.

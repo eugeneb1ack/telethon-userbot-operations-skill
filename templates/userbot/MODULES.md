@@ -12,6 +12,22 @@ venv/bin/python scripts/userbot_module_registry.py --query '<request>'
 
 It selects an existing module and prints an exact command template; only use the canonical skill’s Telethon API inventory and playbook when it returns no match.
 
+## Persistent gateway
+
+`main.py` starts `core/gateway.py` before ordinary modules. It owns the authorized client, stores incoming direct-message/mention/reply events in `runtime/<account>/events.sqlite3`, exposes `runtime/<account>/userbot.sock`, and optionally delivers HMAC-signed webhooks.
+
+Use `scripts/userbotctl.py` for gateway-backed reads:
+
+```bash
+venv/bin/python scripts/userbotctl.py --account main status
+venv/bin/python scripts/userbotctl.py --account main recent-dms --limit 3
+venv/bin/python scripts/userbotctl.py --account main dialogs --kind groups
+venv/bin/python scripts/userbotctl.py --account main search --chat '@chat' --query 'text'
+venv/bin/python scripts/userbotctl.py --account main events list --unread
+```
+
+If the gateway is unavailable, read-only direct helpers remain a compatibility fallback. Do not run a persistent gateway and a long-lived direct helper against the same session.
+
 ## In-process userbot handlers
 
 | Module | Role | Safety boundary |
@@ -67,6 +83,7 @@ It selects an existing module and prints an exact command template; only use the
 - Account config lives in `accounts/<name>.env`; shared integration config can live in `accounts/_shared.env`.
 - Account sessions and generated data are isolated below `runtime/<account>/`.
 - Direct helpers connect only to an already-authorized session. They must not start an interactive Telegram login.
+- The gateway is the preferred single session owner; common reads use its local socket without another Telegram connection.
 - Any Telegram write is dry-run/preview first unless an outgoing command is intentionally typed by the owner in Telegram.
 - New module authors must follow `docs/TELETHON_MODULE_AUTHORING.md`; it is the implementation contract for weaker coding models too.
 

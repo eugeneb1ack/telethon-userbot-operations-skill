@@ -16,6 +16,28 @@
 ./run.sh --account second
 ```
 
+## Быстрые запросы без переподключения
+
+`./run.sh` по умолчанию поднимает локальный gateway. Пока он работает, агенты используют один уже авторизованный Telegram-клиент:
+
+```bash
+venv/bin/python scripts/userbotctl.py --account main status
+venv/bin/python scripts/userbotctl.py --account main recent-dms --limit 3
+venv/bin/python scripts/userbotctl.py --account main dialogs --kind personal
+venv/bin/python scripts/userbotctl.py --account main recent --chat '@chat' --limit 20
+venv/bin/python scripts/userbotctl.py --account main events list --unread
+```
+
+Сокет `runtime/<account>/userbot.sock` и база событий доступны только локальному пользователю. По умолчанию автозагрузки нет: gateway работает в foreground или запускается по требованию:
+
+```bash
+venv/bin/python scripts/userbotd.py --account main start
+venv/bin/python scripts/userbotd.py --account main status
+venv/bin/python scripts/userbotd.py --account main stop
+```
+
+Опциональный подписанный webhook настраивается локально через `venv/bin/python scripts/setup_gateway.py`. `install_gateway_service.py` существует только для явно запрошенной автозагрузки и по умолчанию не используется. Полный контракт описан в каноническом skill: `references/gateway-webhooks.md`.
+
 ## Режимы конфигурации
 
 ### 1) Рекомендуемая схема: shared + account profiles
@@ -91,7 +113,7 @@ for f in modules/*.py; do venv/bin/python "$f" --help >/dev/null; done
 
 ## Частые безопасные операции
 
-Все команды сначала печатают план и ничего не пишут в Telegram. Добавляй `--execute` только после проверки target/ID.
+Read-only gateway-команды выполняются сразу. Команды, изменяющие Telegram, сначала печатают точный план; добавляй `--execute` только после подтверждения target/ID/action.
 
 Для естественного запроса сначала можно спросить local router — он не подключается к Telegram и подсказывает конкретный модуль:
 

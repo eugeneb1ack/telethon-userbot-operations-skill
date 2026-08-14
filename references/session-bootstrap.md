@@ -56,7 +56,7 @@ Telethon создаёт SQLite session сам. Не создавай пусто�
 ### 5. Проверь локально, не раскрывая содержимое session
 
 ```bash
-SKILL_DIR="${USERBOT_SKILL_DIR:-$HOME/.codex/skills/userbot}"
+SKILL_DIR="${USERBOT_SKILL_DIR:?set USERBOT_SKILL_DIR to the installed userbot skill}"
 USERBOT_PY="$USERBOT_ROOT/venv/bin/python"
 
 # Offline: проверяет наличие, SQLite-формат и file permissions. В Telegram не подключается.
