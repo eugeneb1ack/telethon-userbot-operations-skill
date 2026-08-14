@@ -35,6 +35,7 @@ It selects an existing module and prints an exact command template; only use the
 | `transcribe_audio_native.py` | Native Telegram audio transcription via `messages.TranscribeAudioRequest`. |
 | `summarize_chat_native.py` | Moscow-time bounded chat collection, native STT and local archive/context generation. |
 | `count_user_messages.py` | Count one user’s messages for a time window; only `--send` publishes its report. |
+| `recent_personal_incoming.py` | List recent incoming personal-dialog senders with timestamps only; message text and media are not returned. |
 | `personal_chats.py`, `group_chats.py`, `channel_chats.py`, `bot_chats.py` | JSON/text dialog inventory CLIs. |
 | `profile_settings.py` | Inspect own profile and prepare changes to name, bio, username, or custom-emoji status. Custom emoji documents are resolved before a status change. |
 | `group_member.py` | Inspect one group/channel member’s current permissions. |
