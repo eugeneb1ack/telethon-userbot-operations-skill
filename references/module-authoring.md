@@ -15,7 +15,7 @@ Create `modules/<snake_case_feature>.py`. Do not combine unrelated profile, stor
 
 ## Required direct-helper skeleton
 
-Use a direct helper only when no gateway operation fits. Repeated/read-heavy operations should be a small gateway method so agents reuse the persistent client and local JSON transport.
+Use a direct helper only when no gateway operation fits. Repeated/read-heavy operations should be a small gateway method so agents reuse the local JSON transport. Register direct-helper commands through `scripts/userbotrun.py`; never invoke them bare in the registry.
 
 ```python
 from __future__ import annotations
@@ -102,13 +102,16 @@ At minimum prove:
 
 ```bash
 cd "$USERBOT_ROOT"
+venv/bin/python scripts/check_module.py modules/<name>.py --full
 venv/bin/python -m compileall -q . -x '/(venv|\.git|__pycache__)'
 venv/bin/python -m unittest discover -s tests -v
 venv/bin/python -m pip check
 for f in modules/*.py; do venv/bin/python "$f" --help >/dev/null; done
 ```
 
-Then update the local module registry and `MODULES.md`.
+Then update the local module registry and `MODULES.md`. The registry command for
+a direct helper must use `scripts/userbotrun.py` so session locking and timeout
+cleanup remain active.
 
 ## Prompt for a smaller coding model
 

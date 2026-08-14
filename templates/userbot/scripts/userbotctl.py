@@ -10,6 +10,16 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.userbotd import DEFAULT_IDLE_SECONDS, bounded_idle_seconds, safe_account, start
+
+
+class GatewayUnavailable(RuntimeError):
+    pass
+
 
 def socket_path(project_root: Path, account: str) -> Path:
     override = os.getenv("USERBOT_SOCKET")
@@ -24,8 +34,8 @@ async def request(path: Path, method: str, params: dict[str, Any]) -> dict[str, 
             asyncio.open_unix_connection(str(path)), timeout=3
         )
     except (FileNotFoundError, ConnectionRefusedError, asyncio.TimeoutError) as exc:
-        raise RuntimeError(
-            f"gateway unavailable at {path}; start ./run.sh --account <name>"
+        raise GatewayUnavailable(
+            f"gateway unavailable at {path}"
         ) from exc
     payload = {
         "id": uuid.uuid4().hex,
@@ -58,6 +68,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path(__file__).resolve().parent.parent,
     )
     parser.add_argument("--account", default=os.getenv("USERBOT_ACCOUNT", "main"))
+    parser.add_argument(
+        "--no-auto-start",
+        action="store_true",
+        help="Fail instead of starting a short-lived gateway on demand",
+    )
+    parser.add_argument(
+        "--idle-seconds",
+        type=int,
+        default=os.getenv("USERBOT_IDLE_SECONDS", str(DEFAULT_IDLE_SECONDS)),
+        help="Auto-stop an on-demand gateway after local inactivity (10-3600)",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
 
     commands.add_parser("status")
@@ -126,10 +147,18 @@ def rpc_for(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
 def main() -> int:
     args = build_parser().parse_args()
     method, params = rpc_for(args)
+    project_root = args.project_root.expanduser().resolve()
     try:
-        result = asyncio.run(
-            request(socket_path(args.project_root.resolve(), args.account), method, params)
-        )
+        account = safe_account(args.account)
+        idle_seconds = bounded_idle_seconds(args.idle_seconds)
+        path = socket_path(project_root, account)
+        try:
+            result = asyncio.run(request(path, method, params))
+        except GatewayUnavailable:
+            if args.no_auto_start:
+                raise
+            start(project_root, account, idle_seconds)
+            result = asyncio.run(request(path, method, params))
     except Exception as exc:
         print(
             json.dumps(

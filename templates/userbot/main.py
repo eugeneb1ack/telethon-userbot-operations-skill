@@ -12,6 +12,7 @@ from telethon import errors
 from core.config import BASE_DIR, apply_runtime_env, load_settings
 from core.gateway import UserbotGateway, load_gateway_options
 from core.module_loader import load_modules
+from core.runtime_lock import AccountRuntimeLock
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,6 +20,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 MAX_LOGIN_ATTEMPTS = 3
+
+
+def idle_seconds(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("idle seconds must be an integer") from exc
+    if not 0 <= parsed <= 3600:
+        raise argparse.ArgumentTypeError("idle seconds must be between 0 and 3600")
+    return parsed
 
 
 def describe_code_delivery(sent_code: object) -> str:
@@ -125,6 +136,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use an existing authorized session and fail instead of starting login",
     )
+    parser.add_argument(
+        "--gateway-only",
+        action="store_true",
+        help="Start only the local RPC gateway; skip regular command modules",
+    )
+    parser.add_argument(
+        "--idle-seconds",
+        type=idle_seconds,
+        default=0,
+        help="Disconnect after this many seconds without a local RPC (0 disables)",
+    )
     return parser.parse_args()
 
 
@@ -133,50 +155,77 @@ async def run(
     *,
     no_gateway: bool = False,
     non_interactive: bool = False,
+    gateway_only: bool = False,
+    idle_timeout_seconds: int = 0,
 ) -> None:
+    if gateway_only and no_gateway:
+        raise ValueError("--gateway-only cannot be combined with --no-gateway")
+    if idle_timeout_seconds and no_gateway:
+        raise ValueError("--idle-seconds requires the gateway")
     settings = load_settings(account=account)
     apply_runtime_env(settings)
+    runtime_lock = AccountRuntimeLock(settings.runtime_dir)
+    runtime_lock.acquire()
 
-    client = TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
-
-    account_label = settings.account or "legacy"
-    print(f"Запуск юзербота (account={account_label})...")
-    if non_interactive:
-        await client.connect()
-        restrict_session_permissions(client)
-        if not await client.is_user_authorized():
-            raise RuntimeError(
-                "Telegram session is not authorized; run ./run.sh --account <name> interactively once"
-            )
-    else:
-        await sign_in_interactively(client, settings.phone_number)
-
-    me = await client.get_me()
-    print(f"Юзербот запущен! Аккаунт: {me.first_name} (@{me.username})")
-
+    client: TelegramClient | None = None
     gateway: UserbotGateway | None = None
-    options = load_gateway_options(settings)
-    if options.enabled and not no_gateway:
-        gateway = UserbotGateway(client, settings, options)
-        await gateway.start()
-        # Register the durable inbox before fetching missed updates. Existing
-        # behavior modules are loaded afterwards, so catch-up cannot replay old
-        # messages into an auto-responder.
-        await client.catch_up()
-        print(f"Локальный gateway: {options.socket_path}")
-
     try:
-        loaded = await load_modules(client, Path(BASE_DIR) / "modules")
-        if loaded:
-            logger.info("Загружено модулей: %s", ", ".join(loaded))
+        client = TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
+        account_label = settings.account or "legacy"
+        print(f"Запуск юзербота (account={account_label})...")
+        if non_interactive:
+            await client.connect()
+            restrict_session_permissions(client)
+            if not await client.is_user_authorized():
+                raise RuntimeError(
+                    "Telegram session is not authorized; run ./run.sh --account <name> interactively once"
+                )
         else:
-            logger.info("Модули не найдены. Запуск в чистом режиме.")
+            await sign_in_interactively(client, settings.phone_number)
 
-        print("Юзербот работает. Нажмите Ctrl+C для остановки.")
+        me = await client.get_me()
+        print(f"Юзербот запущен! Аккаунт: {me.first_name} (@{me.username})")
+
+        options = load_gateway_options(settings)
+        if options.enabled and not no_gateway:
+            gateway = UserbotGateway(
+                client,
+                settings,
+                options,
+                idle_timeout_seconds=idle_timeout_seconds,
+            )
+            await gateway.start()
+            # Register the durable inbox before fetching missed updates. Existing
+            # behavior modules are loaded afterwards, so catch-up cannot replay old
+            # messages into an auto-responder.
+            await client.catch_up()
+            print(f"Локальный gateway: {options.socket_path}")
+
+        if not gateway_only:
+            loaded = await load_modules(client, Path(BASE_DIR) / "modules")
+            if loaded:
+                logger.info("Загружено модулей: %s", ", ".join(loaded))
+            else:
+                logger.info("Модули не найдены. Запуск в чистом режиме.")
+
+        if idle_timeout_seconds:
+            print(
+                "Юзербот работает по запросу и завершится через "
+                f"{idle_timeout_seconds} сек. без локальных RPC."
+            )
+        else:
+            print("Юзербот работает. Нажмите Ctrl+C для остановки.")
         await client.run_until_disconnected()
     finally:
-        if gateway is not None:
-            await gateway.stop()
+        try:
+            if gateway is not None:
+                await gateway.stop()
+        finally:
+            try:
+                if client is not None and client.is_connected():
+                    await client.disconnect()
+            finally:
+                runtime_lock.release()
 
 
 if __name__ == "__main__":
@@ -187,9 +236,11 @@ if __name__ == "__main__":
                 account=cli_args.account,
                 no_gateway=cli_args.no_gateway,
                 non_interactive=cli_args.non_interactive,
+                gateway_only=cli_args.gateway_only,
+                idle_timeout_seconds=cli_args.idle_seconds,
             )
         )
-    except ValueError as exc:
+    except (RuntimeError, ValueError) as exc:
         raise SystemExit(str(exc))
     except KeyboardInterrupt:
         print("Юзербот остановлен.")

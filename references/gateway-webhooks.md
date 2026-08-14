@@ -1,4 +1,4 @@
-# Persistent gateway and webhook
+# Gateway lifecycle and webhook
 
 Load this reference for fast reads, background operation, event notifications, webhooks, or integration with a non-Codex agent.
 
@@ -27,7 +27,7 @@ venv/bin/python scripts/userbotctl.py --account main events list --unread
 
 These are read-only Telegram operations. `events ack` changes only the local inbox state.
 
-## Default: foreground or on-demand
+## Default: one-command on-demand
 
 Normal foreground mode starts the gateway only while the userbot is running:
 
@@ -35,7 +35,11 @@ Normal foreground mode starts the gateway only while the userbot is running:
 ./run.sh --account main
 ```
 
-For agent requests, start a detached process on demand. This does not create a LaunchAgent and does not survive a reboot:
+For agent requests, call `userbotctl.py` directly. If needed it starts a
+`gateway-only` process and retries the RPC. The process exits 60 seconds after
+the last local RPC; incoming Telegram updates do not extend that timer.
+
+Use these only for diagnosis or an explicit longer batch:
 
 ```bash
 venv/bin/python scripts/userbotd.py --account main start
@@ -43,20 +47,36 @@ venv/bin/python scripts/userbotd.py --account main status
 venv/bin/python scripts/userbotd.py --account main stop
 ```
 
-On-demand mode is non-interactive and refuses to initiate Telegram login. Authorize the session once through the foreground launcher first.
+On-demand mode is non-interactive and refuses to initiate Telegram login. It
+holds `runtime/<account>/userbot.lock`, publishes a verified PID, and refuses a
+second owner of the same session. Authorize the session once through the
+foreground launcher first.
 
-## Optional macOS autostart
+Direct modules run through `scripts/userbotrun.py`. The runner stops only a
+short-lived gateway, holds the same account lock while the module runs, and
+terminates a stuck process group after its bounded timeout. It refuses to stop a
+foreground gateway.
 
-Autostart is not installed by default and is not required. Only when the owner explicitly asks for login-time background operation, inspect and execute:
+## Optional current-login launchd supervisor
+
+This is not part of normal agent operation. It is useful only for continuous
+event/webhook monitoring. The plist stays under `runtime/<account>/launchd/` and
+is bootstrapped for the current login session; nothing is written to
+`~/Library/LaunchAgents`, so it is not loaded at the next login.
 
 ```bash
 venv/bin/python scripts/install_gateway_service.py --project-root "$PWD" --account main
 
 venv/bin/python scripts/install_gateway_service.py \
   --project-root "$PWD" --account main --execute
+
+venv/bin/python scripts/install_gateway_service.py \
+  --project-root "$PWD" --account main --unload
 ```
 
-The optional launchd plist contains paths and the account label, never credentials. Stop or replace it through `launchctl bootout` before a foreground or on-demand launch to avoid two processes opening the same session.
+The optional plist contains paths and the account label, never credentials. The
+same account lock prevents a foreground or on-demand client from opening the
+session concurrently.
 
 ## Events
 

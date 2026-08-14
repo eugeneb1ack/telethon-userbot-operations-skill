@@ -28,6 +28,7 @@ class UserbotModuleRegistryTests(unittest.TestCase):
         self.assertEqual(operation["slug"], "list_members")
         self.assertEqual(operation["mode"], "read_only")
         self.assertEqual(operation["module"], "list_group_members.py")
+        self.assertIn("scripts/userbotrun.py", operation["command"])
 
     def test_custom_emoji_status_routes_to_profile_module(self) -> None:
         result = self.query("поставь кастомный эмодзи в статус профиля")

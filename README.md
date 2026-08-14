@@ -2,7 +2,7 @@
 
 Private, portable, agent-neutral skill **`userbot`** for a local [Telethon](https://docs.telethon.dev/) userbot.
 
-This repository is the single distribution point. It contains one active skill name, a persistent local JSON gateway, a durable Telegram event inbox, signed outbound webhooks, the current module source template, session onboarding, API inventory, and offline checks.
+This repository is the single distribution point. It contains one active skill name, an auto-starting idle-bounded local JSON gateway, a durable Telegram event inbox, signed outbound webhooks, the current module source template, session onboarding, API inventory, and offline checks.
 
 It is not a generic Telegram API cannon. It routes a request to an existing module first; only then does it permit one small, tested extension built against the installed Telethon API and official Telethon/TL documentation.
 
@@ -27,6 +27,9 @@ telethon-userbot-operations-skill/
 └── templates/userbot/                # secret-free current project template
     ├── core/
     ├── modules/
+    ├── scripts/userbotctl.py           # one-command on-demand gateway RPC
+    ├── scripts/userbotrun.py           # locked, timeout-bounded direct modules
+    ├── scripts/check_module.py         # deterministic generated-module gate
     ├── scripts/userbot_module_registry.py
     ├── tests/
     └── docs/
@@ -34,9 +37,11 @@ telethon-userbot-operations-skill/
 
 The registry and module catalog are validated from source instead of documented with a manually maintained count. A context-specific local publisher is deliberately excluded. The package has no account configuration, Telegram session, runtime files, chat exports, media, phone number, API credentials, bot token, webhook secret, or third-party keys.
 
-## Fast persistent access
+## Fast on-demand access
 
-`main.py` owns the authorized Telegram session continuously. Agents use a local mode-`0600` Unix socket instead of reconnecting for every common read:
+Agents call one command. It reuses a live mode-`0600` Unix socket or starts a
+`gateway-only` process and retries automatically. The on-demand owner exits 60
+seconds after the last local RPC:
 
 ```bash
 cd "$USERBOT_ROOT"
@@ -46,6 +51,11 @@ venv/bin/python scripts/userbotctl.py --account main events list --unread
 ```
 
 Incoming direct messages, mentions and replies are deduplicated in a local SQLite inbox. An optional HMAC-signed HTTPS webhook delivers the same compact events to any external workflow or agent. See [references/gateway-webhooks.md](references/gateway-webhooks.md).
+
+One account lock prevents concurrent clients from opening the same Telethon
+SQLite session. Registry direct modules run through `scripts/userbotrun.py`,
+which stops only an idle gateway and terminates a stuck module after a bounded
+timeout.
 
 ## Current routed capabilities
 
@@ -76,6 +86,7 @@ When no route exists, the canonical `userbot` skill tells an agent to:
 3. implement one narrow module using central account config and an existing authorized session;
 4. default every Telegram write to dry-run, require explicit `--execute`, and verify actual state afterwards;
 5. add fake-client tests, update the registry and `MODULES.md`, then run the full offline suite.
+6. pass `scripts/check_module.py modules/<name>.py --full` before the module is used.
 
 That is deliberate, bounded maintenance — not autonomous uncontrolled rewriting. The skill does not overwrite a working project, request secrets, run interactive login, or publish a new GitHub revision without explicit owner direction.
 

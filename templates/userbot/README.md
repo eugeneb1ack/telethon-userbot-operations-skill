@@ -31,12 +31,17 @@ venv/bin/python scripts/userbotctl.py --account main events list --unread
 Сокет `runtime/<account>/userbot.sock` и база событий доступны только локальному пользователю. По умолчанию автозагрузки нет: gateway работает в foreground или запускается по требованию:
 
 ```bash
-venv/bin/python scripts/userbotd.py --account main start
+venv/bin/python scripts/userbotd.py --account main start   # optional manual start
 venv/bin/python scripts/userbotd.py --account main status
 venv/bin/python scripts/userbotd.py --account main stop
 ```
 
-Опциональный подписанный webhook настраивается локально через `venv/bin/python scripts/setup_gateway.py`. `install_gateway_service.py` существует только для явно запрошенной автозагрузки и по умолчанию не используется. Полный контракт описан в каноническом skill: `references/gateway-webhooks.md`.
+`userbotctl.py` сам запускает gateway, если сокета нет. Такой процесс загружает
+только gateway и завершается через 60 секунд после последнего локального RPC.
+Опциональный подписанный webhook настраивается локально через
+`venv/bin/python scripts/setup_gateway.py`. `install_gateway_service.py` нужен
+только для явно запрошенного непрерывного мониторинга в текущей login-сессии;
+в `~/Library/LaunchAgents` он ничего не пишет.
 
 ## Режимы конфигурации
 
@@ -123,30 +128,30 @@ venv/bin/python scripts/userbot_module_registry.py --query 'дай список 
 
 ```bash
 # Проверить профиль или подготовить смену bio/custom-emoji status
-venv/bin/python modules/profile_settings.py --account main
-venv/bin/python modules/profile_settings.py --account main --about 'Новый bio'
+venv/bin/python scripts/userbotrun.py --account main modules/profile_settings.py
+venv/bin/python scripts/userbotrun.py --account main modules/profile_settings.py --about 'Новый bio'
 
 # Отредактировать ровно одно своё сообщение; HTML поддерживает <tg-emoji>
-venv/bin/python modules/message_edit.py --account main --chat @example --message-id 42 --text 'Новый текст'
+venv/bin/python scripts/userbotrun.py --account main modules/message_edit.py --chat @example --message-id 42 --text 'Новый текст'
 
 # Forward только заранее перечисленных message ID
 venv/bin/python modules/forward_messages.py \
   --account main --source-chat @source --destination-chat @destination --message-ids 42,41
 
 # Посмотреть текущие права участника группы
-venv/bin/python modules/group_member.py --account main --group @group --user @member
+venv/bin/python scripts/userbotrun.py --account main modules/group_member.py --group @group --user @member
 
 # Поиск по истории: компактные previews, без полного дампа чата
-venv/bin/python modules/search_messages.py --account main --chat @group --query 'важно' --limit 50
+venv/bin/python scripts/userbotrun.py --account main modules/search_messages.py --chat @group --query 'важно' --limit 50
 
 # Список участников группы; у «Цыган» это теперь постоянный read-only маршрут
-venv/bin/python modules/list_group_members.py --account main --chat 'Цыгане'
+venv/bin/python scripts/userbotrun.py --account main modules/list_group_members.py --chat 'Цыгане'
 
 # Preview скачивания одного вложения. --execute сохранит его только в runtime data.
-venv/bin/python modules/download_media.py --account main --chat @group --message-ids 42
+venv/bin/python scripts/userbotrun.py --account main modules/download_media.py --chat @group --message-ids 42
 
 # Проверить pin либо подготовить pin/unpin одного message ID
-venv/bin/python modules/pin_message.py --account main --chat @group --message-id 42 --action pin
+venv/bin/python scripts/userbotrun.py --account main modules/pin_message.py --chat @group --message-id 42 --action pin
 ```
 
 Полный контракт для добавления следующего модуля, включая команду для младшей модели: `docs/TELETHON_MODULE_AUTHORING.md`.

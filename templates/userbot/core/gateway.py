@@ -7,6 +7,7 @@ import hmac
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -112,7 +113,14 @@ def _display_name(entity: Any, fallback: str) -> str:
 
 
 class UserbotGateway:
-    def __init__(self, client: TelegramClient, settings: Any, options: GatewayOptions) -> None:
+    def __init__(
+        self,
+        client: TelegramClient,
+        settings: Any,
+        options: GatewayOptions,
+        *,
+        idle_timeout_seconds: int = 0,
+    ) -> None:
         self.client = client
         self.settings = settings
         self.options = options
@@ -120,15 +128,32 @@ class UserbotGateway:
         self.store = EventStore(options.database_path)
         self.server: asyncio.AbstractServer | None = None
         self.webhook_task: asyncio.Task[None] | None = None
+        self.idle_task: asyncio.Task[None] | None = None
         self.webhook_wakeup = asyncio.Event()
         self._stopping = False
+        self._stopped = False
+        self.idle_timeout_seconds = idle_timeout_seconds
+        self._last_local_activity = time.monotonic()
+        self._active_requests = 0
 
     async def start(self) -> None:
         self.options.socket_path.parent.mkdir(parents=True, exist_ok=True)
         if self.options.socket_path.exists() and not self.options.socket_path.is_socket():
             raise RuntimeError(f"refusing to replace non-socket path: {self.options.socket_path}")
         if self.options.socket_path.is_socket():
-            self.options.socket_path.unlink()
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_unix_connection(str(self.options.socket_path)),
+                    timeout=0.25,
+                )
+            except (ConnectionRefusedError, FileNotFoundError, asyncio.TimeoutError):
+                self.options.socket_path.unlink(missing_ok=True)
+            else:
+                writer.close()
+                await writer.wait_closed()
+                raise RuntimeError(
+                    f"another gateway already owns socket: {self.options.socket_path}"
+                )
         self.server = await asyncio.start_unix_server(
             self._handle_connection,
             path=str(self.options.socket_path),
@@ -140,6 +165,10 @@ class UserbotGateway:
             self.webhook_task = asyncio.create_task(
                 self._webhook_worker(), name="userbot-webhook"
             )
+        if self.idle_timeout_seconds:
+            self.idle_task = asyncio.create_task(
+                self._idle_worker(), name="userbot-idle-shutdown"
+            )
         logger.info(
             "Local gateway ready for account=%s webhook=%s",
             self.account,
@@ -147,6 +176,8 @@ class UserbotGateway:
         )
 
     async def stop(self) -> None:
+        if self._stopped:
+            return
         self._stopping = True
         self.client.remove_event_handler(self._on_new_message)
         if self.server is not None:
@@ -156,9 +187,28 @@ class UserbotGateway:
             self.webhook_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self.webhook_task
+        if self.idle_task is not None and self.idle_task is not asyncio.current_task():
+            self.idle_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self.idle_task
         self.store.close()
         with contextlib.suppress(FileNotFoundError):
             self.options.socket_path.unlink()
+        self._stopped = True
+
+    async def _idle_worker(self) -> None:
+        while not self._stopping:
+            elapsed = time.monotonic() - self._last_local_activity
+            remaining = self.idle_timeout_seconds - elapsed
+            if self._active_requests == 0 and remaining <= 0:
+                logger.info(
+                    "Idle timeout reached for account=%s after %ss; disconnecting",
+                    self.account,
+                    self.idle_timeout_seconds,
+                )
+                await self.client.disconnect()
+                return
+            await asyncio.sleep(max(0.1, min(1.0, remaining)))
 
     async def _on_new_message(self, event: events.NewMessage.Event) -> None:
         try:
@@ -224,6 +274,13 @@ class UserbotGateway:
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         request_id: Any = None
+        response: dict[str, Any] = {
+            "id": None,
+            "ok": False,
+            "error": {"type": "GatewayError", "message": "request cancelled"},
+        }
+        self._active_requests += 1
+        self._last_local_activity = time.monotonic()
         try:
             raw = await asyncio.wait_for(reader.readline(), timeout=10)
             if not raw or len(raw) > MAX_REQUEST_BYTES:
@@ -244,22 +301,29 @@ class UserbotGateway:
                 "ok": False,
                 "error": {"type": type(exc).__name__, "message": str(exc)},
             }
-        writer.write(json.dumps(response, ensure_ascii=False).encode("utf-8") + b"\n")
-        with contextlib.suppress(Exception):
-            await writer.drain()
-        writer.close()
-        with contextlib.suppress(Exception):
-            await writer.wait_closed()
+        finally:
+            try:
+                writer.write(
+                    json.dumps(response, ensure_ascii=False).encode("utf-8") + b"\n"
+                )
+                with contextlib.suppress(Exception):
+                    await writer.drain()
+            finally:
+                writer.close()
+                with contextlib.suppress(Exception):
+                    await writer.wait_closed()
+                self._active_requests -= 1
+                self._last_local_activity = time.monotonic()
 
     async def dispatch(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         if method == "status":
-            me = await self.client.get_me()
             return {
                 "account": self.account,
                 "authorized": bool(await self.client.is_user_authorized()),
                 "connected": self.client.is_connected(),
-                "user_id": getattr(me, "id", None),
                 "webhook_enabled": bool(self.options.webhook_url),
+                "pid": os.getpid(),
+                "idle_timeout_seconds": self.idle_timeout_seconds,
             }
         if method == "events.list":
             events_list = self.store.list_events(

@@ -27,10 +27,16 @@ def plist_payload(project_root: Path, account: str) -> dict:
     logs = root / "runtime" / account / "logs"
     return {
         "Label": service_label(account),
-        "ProgramArguments": [str(run_script), "--account", account],
+        "ProgramArguments": [
+            str(run_script),
+            "--account",
+            account,
+            "--non-interactive",
+            "--gateway-only",
+        ],
         "WorkingDirectory": str(root),
         "RunAtLoad": True,
-        "KeepAlive": True,
+        "KeepAlive": {"SuccessfulExit": False},
         "ProcessType": "Background",
         "ThrottleInterval": 10,
         "StandardOutPath": str(logs / "gateway.stdout.log"),
@@ -40,13 +46,14 @@ def plist_payload(project_root: Path, account: str) -> dict:
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
-        description="Install the userbot gateway as a per-user macOS launchd service"
+        description="Run an optional launchd supervisor for the current login session only"
     )
     result.add_argument(
         "--project-root", type=Path, default=Path(__file__).resolve().parent.parent
     )
     result.add_argument("--account", default="main")
     result.add_argument("--execute", action="store_true")
+    result.add_argument("--unload", action="store_true")
     return result
 
 
@@ -56,10 +63,24 @@ def main() -> int:
     project_root = args.project_root.expanduser().resolve()
     payload = plist_payload(project_root, account)
     label = payload["Label"]
-    destination = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
+    destination = (
+        project_root / "runtime" / account / "launchd" / f"{label}.plist"
+    )
     print(f"service={label}")
     print(f"project_root={project_root}")
     print(f"plist={destination}")
+    print("autostart=false")
+    if args.execute and args.unload:
+        raise ValueError("choose --execute or --unload")
+    domain = f"gui/{os.getuid()}"
+    if args.unload:
+        subprocess.run(
+            ["launchctl", "bootout", domain, str(destination)],
+            check=False,
+        )
+        destination.unlink(missing_ok=True)
+        print("unloaded=true")
+        return 0
     if not args.execute:
         print("dry_run=true")
         return 0
@@ -72,7 +93,6 @@ def main() -> int:
     os.chmod(temporary, 0o600)
     temporary.replace(destination)
 
-    domain = f"gui/{os.getuid()}"
     subprocess.run(
         ["launchctl", "bootout", domain, str(destination)],
         check=False,
@@ -81,7 +101,7 @@ def main() -> int:
     )
     subprocess.run(["launchctl", "bootstrap", domain, str(destination)], check=True)
     subprocess.run(["launchctl", "kickstart", "-k", f"{domain}/{label}"], check=True)
-    print("installed=true")
+    print("loaded_for_current_login=true")
     return 0
 
 

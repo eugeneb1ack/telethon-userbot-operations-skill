@@ -1,6 +1,6 @@
 ---
 name: userbot
-description: Operate and extend a local agent-neutral Telethon userbot through its persistent gateway and existing modules. Use to inspect Telegram data, receive direct-message/mention/reply events, send or modify messages, manage groups or profiles, configure signed webhooks, bootstrap a userbot, verify a session, or add one guarded Telethon module.
+description: Operate and extend a local agent-neutral Telethon userbot through its on-demand gateway and guarded modules. Use to inspect Telegram data, receive direct-message/mention/reply events, send or modify messages, manage groups or profiles, configure signed webhooks, bootstrap a userbot, verify a session, or add and validate one guarded Telethon module.
 ---
 
 # Telethon Userbot
@@ -9,7 +9,7 @@ This is the single canonical, agent-neutral skill for the local Telethon userbot
 
 - Project runtime: `$USERBOT_ROOT`, default `$HOME/Documents/telethon-userbot`.
 - Python: `$USERBOT_PY`, default `$USERBOT_ROOT/venv/bin/python`.
-- The persistent gateway owns the Telegram connection and serves local JSON over a Unix socket.
+- One account process owns the Telegram session. The local JSON gateway normally starts on demand and stops after idle time.
 - Existing modules remain the compatibility and extension layer.
 
 ```bash
@@ -39,7 +39,8 @@ The bootstrap refuses an existing destination. Never use it to overwrite, merge 
 
 ## Fast path
 
-Prefer the already-running local gateway. These commands use no new Telegram connection:
+Call `userbotctl.py` directly. It reuses a live gateway or starts a lightweight
+`gateway-only` process itself; the default process exits 60 seconds after the last local RPC:
 
 ```bash
 cd "$USERBOT_ROOT"
@@ -48,13 +49,15 @@ cd "$USERBOT_ROOT"
 "$USERBOT_PY" scripts/userbotctl.py --account main events list --unread
 ```
 
-If the socket is unavailable, start it on demand without login prompts or autostart, then retry:
+Manual lifecycle commands are available for diagnosis; normal requests do not need them:
 
 ```bash
 "$USERBOT_PY" scripts/userbotd.py --account main start
+"$USERBOT_PY" scripts/userbotd.py --account main status
+"$USERBOT_PY" scripts/userbotd.py --account main stop
 ```
 
-Routine read-only gateway calls and local event acknowledgements may proceed immediately. If on-demand startup fails, use the registry's read-only fallback; do not request a separate conversational confirmation merely to connect or read. Stop the detached gateway with `userbotd.py --account main stop`. Never install autostart unless the owner explicitly requests it.
+Routine read-only gateway calls and local event acknowledgements may proceed immediately. Do not request a separate conversational confirmation merely to connect or read. `USERBOT_IDLE_SECONDS` may tune the 10–3600 second idle window. Never disable idle shutdown for agent requests.
 
 ## One route for every request
 
@@ -65,7 +68,7 @@ cd "$USERBOT_ROOT"
 "$USERBOT_PY" scripts/userbot_module_registry.py --query '<natural-language request>'
 ```
 
-Use the single returned command, not an ad-hoc script. The registry prefers gateway routes for common reads and existing guarded modules for the rest.
+Use the single returned command, not an ad-hoc script. The registry prefers gateway routes for common reads and routes direct modules through `userbotrun.py`, which serializes session ownership and enforces a hard process timeout.
 
 ## Session onboarding
 
@@ -88,7 +91,8 @@ Load `references/session-bootstrap.md` for setup, login, importing a `.session`,
 
 ## Runtime safety contract
 
-- The gateway is the preferred session owner. Direct helpers are fallback and use `connect()` + `is_user_authorized()` without interactive login.
+- The gateway is the preferred session owner. An account lock prevents two processes from opening one `.session`.
+- Run direct helpers only through the registry-provided `userbotrun.py` command. It stops only an idle gateway, refuses to stop a foreground owner, and kills a timed-out module process group.
 - Read-only Telegram work and contained local outputs may proceed once required inputs are known.
 - Sending, editing, deleting, forwarding, reacting, changing permissions/profile, or otherwise writing to Telegram requires an exact preview and explicit approval before `--execute`.
 - Freeze IDs before batches. Fail closed on ambiguity. Respect `FloodWaitError` once per unit. Read back final state.
@@ -104,10 +108,14 @@ Load `references/session-bootstrap.md` for setup, login, importing a `.session`,
 2. Open the official URL returned by inventory: Telethon client docs, RPC errors, and matching TL schema.
 3. Read `references/module-authoring.md`.
 4. Add one focused module under `modules/`, then update the registry and `MODULES.md`.
+5. Run the deterministic module gate before the full suite:
+   ```bash
+   "$USERBOT_PY" scripts/check_module.py modules/<name>.py --full
+   ```
 
 This is the bounded self-improvement loop: reuse first; otherwise inspect the installed API and official documentation; add one tested module; update its route and docs. Do not silently rewrite unrelated modules, turn it into a generic Telegram API wrapper, or publish a new package revision without an explicit owner request.
 
-For the persistent gateway, on-demand process, event inbox, webhook payload, HMAC verification, and explicitly optional autostart, load `references/gateway-webhooks.md`.
+For gateway lifecycle, event inbox, webhook payload, HMAC verification, and the optional current-login supervisor, load `references/gateway-webhooks.md`.
 
 For custom emoji, distinguish inline entities, reactions, profile/channel status, and emoji packs. Use `references/operation-playbook.md` before choosing an API.
 

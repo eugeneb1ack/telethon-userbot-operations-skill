@@ -4,8 +4,10 @@ import asyncio
 import hashlib
 import hmac
 import json
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,10 +21,12 @@ if str(ROOT) not in sys.path:
 from core.event_store import EventStore, event_id
 from core import gateway as gateway_module
 from core.gateway import GatewayOptions, UserbotGateway, validate_webhook_url, webhook_signature
+from core.runtime_lock import AccountRuntimeLock
 from scripts.userbotctl import rpc_for, socket_path
 from scripts.install_gateway_service import plist_payload, service_label
 from scripts.setup_gateway import parse_env, update_env
 from scripts.userbotd import process_command, safe_account as safe_daemon_account
+from scripts.userbotrun import bounded_timeout, module_command, resolve_module, stop_process_group
 
 
 class EventStoreTests(unittest.TestCase):
@@ -202,20 +206,126 @@ class UserbotCtlTests(unittest.TestCase):
 
     def test_on_demand_command_is_non_interactive_and_has_no_autostart(self) -> None:
         command = process_command(Path("/project"), "main")
-        self.assertEqual(command, ["/project/run.sh", "--account", "main", "--non-interactive"])
+        self.assertEqual(
+            command,
+            [
+                "/project/run.sh",
+                "--account",
+                "main",
+                "--non-interactive",
+                "--gateway-only",
+                "--idle-seconds",
+                "60",
+            ],
+        )
         self.assertEqual(safe_daemon_account("second_2"), "second_2")
         with self.assertRaises(ValueError):
             safe_daemon_account("../main")
 
 
+class RuntimeLifecycleTests(unittest.TestCase):
+    def test_account_lock_rejects_a_second_owner_and_cleans_pid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = AccountRuntimeLock(tmp)
+            second = AccountRuntimeLock(tmp)
+            first.acquire()
+            self.assertEqual(
+                int((Path(tmp) / "userbot.pid").read_text(encoding="ascii")),
+                first.pid,
+            )
+            with self.assertRaisesRegex(RuntimeError, "already owns"):
+                second.acquire()
+            first.release()
+            self.assertFalse((Path(tmp) / "userbot.pid").exists())
+
+    def test_idle_worker_disconnects_only_after_local_requests_finish(self) -> None:
+        async def scenario() -> None:
+            disconnected = asyncio.Event()
+
+            class FakeClient:
+                async def disconnect(self):
+                    disconnected.set()
+
+            with tempfile.TemporaryDirectory() as tmp:
+                options = GatewayOptions(
+                    enabled=True,
+                    socket_path=Path(tmp) / "userbot.sock",
+                    database_path=Path(tmp) / "events.sqlite3",
+                    preview_chars=0,
+                    webhook_url=None,
+                    webhook_secret=None,
+                )
+                gateway = UserbotGateway(
+                    FakeClient(),
+                    SimpleNamespace(account="main"),
+                    options,
+                    idle_timeout_seconds=1,
+                )
+                gateway._active_requests = 1
+                gateway._last_local_activity = time.monotonic() - 2
+                task = asyncio.create_task(gateway._idle_worker())
+                await asyncio.sleep(0.15)
+                self.assertFalse(disconnected.is_set())
+                gateway._active_requests = 0
+                await asyncio.wait_for(disconnected.wait(), timeout=2)
+                await task
+                gateway.store.close()
+
+        asyncio.run(scenario())
+
+    def test_direct_module_runner_builds_one_account_scoped_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            module = root / "modules" / "example.py"
+            module.parent.mkdir()
+            module.write_text("", encoding="utf-8")
+            resolved = resolve_module(root, "modules/example.py")
+            self.assertEqual(
+                module_command(
+                    Path("/project/venv/bin/python"),
+                    resolved,
+                    "main",
+                    ["--", "--chat", "@example"],
+                ),
+                [
+                    "/project/venv/bin/python",
+                    str(module.resolve()),
+                    "--account",
+                    "main",
+                    "--chat",
+                    "@example",
+                ],
+            )
+            self.assertEqual(bounded_timeout(180), 180)
+            with self.assertRaises(ValueError):
+                bounded_timeout(0)
+
+    def test_direct_module_runner_stops_a_child_process_group(self) -> None:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            signal_name = stop_process_group(process)
+            self.assertEqual(signal_name, "SIGINT")
+            self.assertIsNotNone(process.poll())
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=2)
+
+
 class LaunchdInstallerTests(unittest.TestCase):
-    def test_plist_keeps_secrets_out_and_restarts_failed_process(self) -> None:
+    def test_plist_keeps_secrets_out_and_is_gateway_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "run.sh").write_text("#!/bin/sh\n", encoding="utf-8")
             payload = plist_payload(root, "main")
             self.assertEqual(payload["Label"], service_label("main"))
-            self.assertTrue(payload["KeepAlive"])
+            self.assertEqual(payload["KeepAlive"], {"SuccessfulExit": False})
+            self.assertIn("--gateway-only", payload["ProgramArguments"])
             serialized = str(payload).casefold()
             self.assertNotIn("api_hash", serialized)
             self.assertNotIn("webhook_secret", serialized)

@@ -23,7 +23,7 @@
 - Keep modules small and focused: one command/feature per file in `modules/`.
 - Every module must expose `register(client)` so the loader can attach handlers.
 - Prefer structured logging (`logging.getLogger(__name__)`) over ad-hoc prints for diagnostics.
-- For common reads, use `venv/bin/python scripts/userbotctl.py --account main ...`; it reuses the persistent client through a local Unix socket. Before inventing a module or one-off, run `venv/bin/python scripts/userbot_module_registry.py --query '<natural request>'` and use the single returned command. For genuinely new operations, follow `docs/TELETHON_MODULE_AUTHORING.md`.
+- For common reads, use `venv/bin/python scripts/userbotctl.py --account main ...`; it reuses or auto-starts a short-lived gateway through a local Unix socket. Before inventing a module or one-off, run `venv/bin/python scripts/userbot_module_registry.py --query '<natural request>'` and use the single returned command. For genuinely new operations, follow `docs/TELETHON_MODULE_AUTHORING.md` and run `scripts/check_module.py`.
 
 ## Testing Guidelines
 - The offline regression suite is `venv/bin/python -m unittest discover -s tests -v`.
@@ -39,5 +39,5 @@
 ## Security & Configuration Tips
 - Never commit `.env`, session files, API credentials, or phone numbers.
 - Keep `userbot.session` local only; rotate credentials if accidentally exposed.
-- Only `main.py` / `./run.sh` may perform interactive login. In normal operation one gateway process owns the session; agents use `userbotctl.py`. Direct helpers remain a non-interactive fallback.
+- Only `main.py` / `./run.sh` may perform interactive login. One process may own an account session. Agents use auto-starting `userbotctl.py`; registry direct helpers must run through `userbotrun.py`, never bare.
 - Never ask for, print, inspect, copy, upload, or commit Telegram login codes, 2FA passwords, `.session` contents, API hashes, or account env files. Session readiness is checked only through file metadata and optional `is_user_authorized()`.

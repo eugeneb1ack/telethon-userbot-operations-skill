@@ -51,7 +51,7 @@ $PY "$SKILL/scripts/telethon_api_inventory.py" \
 
 ## 2. Сначала проверь, не существует ли функция
 
-Частые read-only операции должны использовать `scripts/userbotctl.py` и уже запущенный клиент. Новый direct helper нужен только когда gateway/registry ещё не покрывают запрос.
+Частые read-only операции должны использовать `scripts/userbotctl.py`: он переиспользует или сам запускает короткоживущий gateway. Новый direct helper нужен только когда gateway/registry ещё не покрывают запрос. Его команда в registry обязана идти через `scripts/userbotrun.py`, а не напрямую: runner сериализует доступ к session и завершает зависший subprocess.
 
 ```bash
 cd /Users/johndoe/Documents/telethon-userbot
@@ -236,6 +236,7 @@ Fake clients are good. Do **not** write real Telegram data to test a module.
 Run all four commands from the project root:
 
 ```bash
+venv/bin/python scripts/check_module.py modules/<name>.py --full
 venv/bin/python -m compileall -q . -x '/(venv|\.git|__pycache__)/'
 venv/bin/python -m unittest discover -s tests -v
 venv/bin/python -m pip check
@@ -245,6 +246,7 @@ for f in modules/*.py; do venv/bin/python "$f" --help >/dev/null; done
 Then update:
 
 - `MODULES.md` — what the user can run;
+- `scripts/userbot_module_registry.py` — direct command uses `scripts/userbotrun.py`;
 - the installed canonical `userbot` skill — if a reusable API workflow, gotcha, or verification rule was discovered.
 
 If any of the four commands fails, the module is **not done**. Fix it before reporting success.

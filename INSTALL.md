@@ -1,6 +1,6 @@
 # Installation
 
-This package contains one agent-neutral skill named **`userbot`** and a source template for the persistent Telethon runtime. The Telegram session belongs to one shared runtime; each agent calls the same local JSON CLI.
+This package contains one agent-neutral skill named **`userbot`** and a source template for an on-demand Telethon runtime. The Telegram session belongs to one shared runtime; each agent calls the same local JSON CLI.
 
 ## 1. Clone and validate
 
@@ -118,7 +118,7 @@ Verify without exposing account material:
 
 See [references/session-bootstrap.md](references/session-bootstrap.md) for session import and recovery.
 
-## 7. Persistent gateway and webhook
+## 7. On-demand gateway and webhook
 
 The gateway is enabled by default. Configure the optional signed outbound webhook locally:
 
@@ -127,12 +127,14 @@ cd "$USERBOT_ROOT"
 venv/bin/python scripts/setup_gateway.py
 ```
 
-Run in the foreground, or start it only when an agent needs Telegram. On-demand mode creates no autostart entry and refuses interactive login:
+For normal agent work, run `userbotctl.py` directly. It starts the gateway when
+needed and the process exits 60 seconds after the last local RPC. On-demand mode
+creates no autostart entry and refuses interactive login:
 
 ```bash
 ./run.sh --account main
 
-# Or detached until logout/reboot/manual stop; no LaunchAgent is installed.
+# Manual lifecycle commands are only for diagnosis or a longer batch.
 venv/bin/python scripts/userbotd.py --account main start
 venv/bin/python scripts/userbotd.py --account main status
 venv/bin/python scripts/userbotd.py --account main stop
@@ -148,7 +150,10 @@ venv/bin/python scripts/userbotctl.py --account main events list --unread
 
 See [references/gateway-webhooks.md](references/gateway-webhooks.md) for the event schema, HMAC verification, privacy controls and retry behavior.
 
-An optional `scripts/install_gateway_service.py` exists for owners who explicitly want macOS login-time autostart. Do not run it by default.
+An optional `scripts/install_gateway_service.py` can supervise continuous event
+or webhook monitoring for the current login session. Its plist stays under
+`runtime/`; it never writes to `~/Library/LaunchAgents` and therefore is not
+login autostart. Do not run it for normal agent requests.
 
 ## Update
 

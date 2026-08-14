@@ -26,7 +26,10 @@ venv/bin/python scripts/userbotctl.py --account main search --chat '@chat' --que
 venv/bin/python scripts/userbotctl.py --account main events list --unread
 ```
 
-If the gateway is unavailable, read-only direct helpers remain a compatibility fallback. Do not run a persistent gateway and a long-lived direct helper against the same session.
+`userbotctl.py` starts an idle-bounded gateway automatically. Direct helpers are
+a compatibility fallback and must use the command returned by the registry:
+`scripts/userbotrun.py` serializes account ownership and applies a hard timeout.
+Do not invoke a direct helper bare while any gateway owns the session.
 
 ## In-process userbot handlers
 
