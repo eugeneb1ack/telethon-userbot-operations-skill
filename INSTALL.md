@@ -64,12 +64,27 @@ export USERBOT_ROOT=/absolute/path/to/telethon-userbot
 export USERBOT_PY="$USERBOT_ROOT/venv/bin/python"
 ```
 
+## 6. Register or import the userbot session
+
+Do this only on the owner’s local machine. The complete user/agent procedure is [references/session-bootstrap.md](references/session-bootstrap.md).
+
+First, run the package’s offline checker; it does not connect to Telegram and does not print session contents:
+
+```bash
+SKILL_DIR="$HOME/.hermes/skills/social-media/telethon-userbot-operations"
+"$USERBOT_PY" "$SKILL_DIR/scripts/verify_userbot_session.py" \
+  --project-root "$USERBOT_ROOT" --account main
+```
+
+If no session exists, the owner must run the trusted userbot launcher locally, enter Telegram login code and 2FA in that terminal, then verify again. The agent must never receive or enter those values.
+
 ## Upgrade
 
 ```bash
 cd "$HOME/telethon-userbot-operations-skill"
 git pull --ff-only
 python3 scripts/validate_package.py
+python3 scripts/test_session_checker.py
 # Repeat the matching copy step above.
 ```
 

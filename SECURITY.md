@@ -10,6 +10,13 @@ The repository must never include:
 - chat dumps, downloaded media, contact exports, or user identifiers;
 - real custom emoji document IDs, access hashes, or file references.
 
+## Session registration boundary
+
+- Only the trusted local userbot launcher may run an interactive `client.start()` for first login.
+- Agents and direct modules use `connect()` plus `is_user_authorized()`; they must refuse interactive login.
+- Telegram login codes and 2FA passwords are typed by the owner directly into their local terminal. They are never requested, displayed, transmitted, or stored by the agent.
+- A pre-existing `.session` may be copied only by the owner from a trusted local source into the expected isolated runtime path, then verified with `verify_userbot_session.py`.
+
 ## External actions
 
 Telegram mutation is an external action. A feature is not safe merely because Telethon exposes it.

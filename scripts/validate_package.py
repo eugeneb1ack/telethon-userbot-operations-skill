@@ -17,9 +17,12 @@ REQUIRED = (
     ".gitignore",
     "references/operation-playbook.md",
     "references/module-authoring.md",
+    "references/session-bootstrap.md",
     "scripts/telethon_api_inventory.py",
+    "scripts/verify_userbot_session.py",
+    "scripts/test_session_checker.py",
 )
-FORBIDDEN_NAMES = {".env", "accounts", "runtime", "data", "venv", ".venv"}
+FORBIDDEN_NAMES = {".env", "accounts", "runtime", "data", "venv", ".venv", "__pycache__"}
 FORBIDDEN_SUFFIXES = {".session", ".session-journal", ".sqlite3", ".db"}
 
 

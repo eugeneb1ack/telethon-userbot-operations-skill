@@ -16,9 +16,12 @@ telethon-userbot-operations-skill/
 ├── SECURITY.md
 ├── references/
 │   ├── operation-playbook.md
-│   └── module-authoring.md
+│   ├── module-authoring.md
+│   └── session-bootstrap.md
 └── scripts/
     ├── telethon_api_inventory.py
+    ├── verify_userbot_session.py
+    ├── test_session_checker.py
     └── validate_package.py
 ```
 
@@ -26,6 +29,9 @@ telethon-userbot-operations-skill/
 - **`telethon_api_inventory.py`** — read-only local introspection of installed raw Telethon requests and `TelegramClient` methods.
 - **`operation-playbook.md`** — maps everyday tasks to the right Telethon surface.
 - **`module-authoring.md`** — deterministic implementation checklist and skeleton for a smaller coding model.
+- **`session-bootstrap.md`** — user and agent runbook for local first-login, session import and verification.
+- **`verify_userbot_session.py`** — safe offline/online readiness checker that never prints or creates session contents.
+- **`test_session_checker.py`** — no-network regression test for the readiness checker.
 - **`validate_package.py`** — no-network package sanity check.
 
 ## Prerequisites
@@ -45,6 +51,18 @@ export USERBOT_PY="$USERBOT_ROOT/venv/bin/python"
 ```
 
 The skill never stores API IDs, hashes, phone numbers, bot tokens, session files, chat IDs, or emoji document IDs.
+
+## Register a Telegram session
+
+Before the userbot can operate, the owner must register a local Telethon session. Follow [references/session-bootstrap.md](references/session-bootstrap.md) exactly.
+
+The short version:
+
+1. Create `accounts/main.env` locally with Telegram app credentials and a simple `SESSION_NAME`.
+2. Run the trusted local userbot launcher once and enter Telegram code/2FA **yourself in the terminal**.
+3. Run the offline readiness checker, then optional read-only `--online` authorization check.
+
+A session file, auth code, 2FA password, API hash and phone number must never be pasted into chat or committed to this repo.
 
 ## Fast path for an agent
 
@@ -90,7 +108,7 @@ No Telegram connection or network request is made:
 
 ```bash
 python3 scripts/validate_package.py
-python3 -m py_compile scripts/telethon_api_inventory.py
+python3 scripts/test_session_checker.py
 ```
 
 ## Updating the package

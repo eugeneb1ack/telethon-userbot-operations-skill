@@ -47,6 +47,14 @@ Then consult the official page printed by the inventory:
 - <https://docs.telethon.dev/en/stable/concepts/errors.html>
 - `https://tl.telethon.dev/methods/<namespace>/<request>.html`
 
+## Registering a session safely
+
+Before any userbot module can connect, the owner must register the Telethon session **locally**. Load `references/session-bootstrap.md` when the user asks to install, authorize, import, repair, or verify a session.
+
+- The trusted project launcher may use interactive `client.start()` once; direct helpers must never do so.
+- Telegram login code, 2FA password, `.session`, API hash and account env values never enter agent chat, tool output, GitHub, or an agent-controlled upload.
+- The package helper `scripts/verify_userbot_session.py` has offline file/SQLite/permission mode and explicit `--online` authorization mode. It never starts login or prints session contents.
+
 ## Universal write boundary
 
 1. Resolve the exact peer/object; fail closed on ambiguity.
