@@ -16,26 +16,15 @@ python3 -m venv venv              # только если venv ещё нет
 venv/bin/python -m pip install -r requirements.txt
 ```
 
-### 2. Создай account profile локально
-
-Для профиля `main` нужен файл `accounts/main.env` с **твоими** значениями:
-
-```dotenv
-API_ID=<получить в my.telegram.org>
-API_HASH=<получить в my.telegram.org>
-PHONE_NUMBER=<номер в международном формате>
-SESSION_NAME=main
-```
-
-`SESSION_NAME` — только простое имя без слешей: например, `main` или `personal_2026`. Для profile mode current userbot изолирует session автоматически.
-
-Закрой права на конфиг:
+### 2. Создай account profile интерактивно
 
 ```bash
-chmod 600 accounts/main.env
+python3 scripts/setup_account.py --account main
 ```
 
-Никому не показывай содержимое файла. API hash, номер и session относятся к приватным данным.
+Скрипт спросит API ID, API hash и номер только в локальном терминале. API hash и номер вводятся без эха, `API_ID` проверяется как положительное целое, а `accounts/main.env` создаётся с правами `600`. `SESSION_NAME` можно оставить пустым, чтобы использовать `main`; он должен быть простым именем без слешей.
+
+Скрипт не перезаписывает существующий профиль. Если там остался незаполненный пример, осознанно запусти `python3 scripts/setup_account.py --account main --replace` и введи `REPLACE` в том же терминале. Никому не показывай содержимое созданного файла.
 
 ### 3. Запусти **только локально** первый интерактивный login
 

@@ -41,8 +41,11 @@ runtime/main/sessions/main.session
 Первый login делай только локально через trusted launcher:
 
 ```bash
+python3 scripts/setup_account.py --account main
 ./run.sh --account main
 ```
+
+`setup_account.py` запросит API ID, API hash и телефон только в локальном терминале; hash и телефон не отображаются. По умолчанию он не перезаписывает существующий профиль. Для осознанной замены используй `--replace` и введи `REPLACE` в том же терминале.
 
 Telegram code и 2FA введи сам в терминале. Не отправляй их, `.session`, `API_HASH` или содержимое `accounts/main.env` агенту, в GitHub или в чат. После строки `Юзербот запущен!` можно нажать `Ctrl+C`: session уже зарегистрирована.
 
@@ -56,16 +59,15 @@ Telegram code и 2FA введи сам в терминале. Не отправ�
 ## Как добавить второй аккаунт
 
 1. Убедитесь, что общие ключи лежат в `accounts/_shared.env`.
-2. Создайте профиль:
+2. Создайте профиль интерактивно:
 ```bash
-cp accounts/second.env.example accounts/second.env
+python3 scripts/setup_account.py --account second
 ```
-3. Заполните в `accounts/second.env` только `API_ID`, `API_HASH`, `PHONE_NUMBER`.
-4. Первый запуск:
+3. Первый запуск:
 ```bash
 ./run.sh --account second
 ```
-5. Telethon попросит код подтверждения из Telegram — введите вручную.
+4. Telethon попросит код подтверждения из Telegram — введите вручную.
 
 > Без ввода кода логин не произойдёт (и это нормально/безопасно).
 

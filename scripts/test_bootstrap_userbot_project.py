@@ -39,6 +39,7 @@ def main() -> int:
         assert (destination / "core" / "config.py").is_file()
         assert (destination / "modules" / "search_messages.py").is_file()
         assert (destination / "scripts" / "userbot_module_registry.py").is_file()
+        assert (destination / "scripts" / "setup_account.py").is_file()
         assert (destination / "accounts" / "main.env.example").is_file()
         assert not (destination / ".env").exists()
         assert not (destination / "runtime").exists()

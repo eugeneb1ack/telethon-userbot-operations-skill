@@ -25,6 +25,7 @@ REQUIRED = (
     "scripts/telethon_api_inventory.py",
     "scripts/verify_userbot_session.py",
     "scripts/test_bootstrap_userbot_project.py",
+    "scripts/test_interactive_account_setup.py",
     "scripts/test_session_checker.py",
     "templates/userbot/main.py",
     "templates/userbot/run.sh",
@@ -33,6 +34,7 @@ REQUIRED = (
     "templates/userbot/MODULES.md",
     "templates/userbot/ACCOUNT.env.example",
     "templates/userbot/core/config.py",
+    "templates/userbot/scripts/setup_account.py",
     "templates/userbot/scripts/userbot_module_registry.py",
 )
 FORBIDDEN_NAMES = {".env", "accounts", "runtime", "data", "venv", ".venv", "__pycache__"}

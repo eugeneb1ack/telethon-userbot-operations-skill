@@ -3,7 +3,7 @@
 This project was generated from the canonical Codex `userbot` skill. Its source template contains the current verified modules, but no Telegram account configuration, session, runtime data, or credentials.
 
 1. Create `venv` and install `requirements.txt`.
-2. Copy `accounts/main.env.example` to `accounts/main.env` locally and fill it yourself.
+2. Run `python3 scripts/setup_account.py --account main` and enter account values only in your local terminal.
 3. Run `./run.sh --account main` and complete Telegram login in your own terminal.
 4. Use the installed skill's `references/session-bootstrap.md` to verify readiness.
 

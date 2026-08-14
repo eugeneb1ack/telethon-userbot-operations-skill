@@ -112,14 +112,23 @@ def load_settings(account: str | None = None) -> Settings:
     phone_number = os.getenv("PHONE_NUMBER") or os.getenv("phone_number")
     session_name = os.getenv("SESSION_NAME", "userbot")
 
-    if not api_id_raw:
-        raise ValueError(f"Переменная API_ID не задана в {env_path.name}")
+    if not api_id_raw or api_id_raw.startswith("<"):
+        raise ValueError(
+            f"API_ID не задан в {env_path.name}. "
+            f"Запусти python3 scripts/setup_account.py --account {account_name or 'main'}"
+        )
 
-    if not api_hash:
-        raise ValueError(f"Переменная API_HASH не задана в {env_path.name}")
+    if not api_hash or api_hash.startswith("<"):
+        raise ValueError(
+            f"API_HASH не задан в {env_path.name}. "
+            f"Запусти python3 scripts/setup_account.py --account {account_name or 'main'}"
+        )
 
-    if not phone_number:
-        raise ValueError(f"Переменная PHONE_NUMBER не задана в {env_path.name}")
+    if not phone_number or phone_number.startswith("<"):
+        raise ValueError(
+            f"PHONE_NUMBER не задан в {env_path.name}. "
+            f"Запусти python3 scripts/setup_account.py --account {account_name or 'main'}"
+        )
 
     try:
         api_id = int(api_id_raw)
