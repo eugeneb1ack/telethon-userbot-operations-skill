@@ -115,6 +115,32 @@ Load `references/session-bootstrap.md` for setup, login, importing a `.session`,
 
 This is the bounded self-improvement loop: reuse first; otherwise inspect the installed API and official documentation; add one tested module; update its route and docs. Do not silently rewrite unrelated modules, turn it into a generic Telegram API wrapper, or publish a new package revision without an explicit owner request.
 
+## Owner-requested media-aware summaries
+
+When the account owner asks to summarize a chat, direct dialog, group, or channel, make the summary media-aware. This is a read-only Telegram workflow with contained local files; do not send, forward, or upload the source media.
+
+1. Run `summarize_chat_native.py` through `userbotrun.py` with `--do-summary`. Do **not** use legacy `summarize.py` or `--metadata-only` for a delivered owner summary. The native collector must invoke Telegram's `messages.TranscribeAudioRequest` for every `voice`, `audio`, and `video_note` record.
+2. Before writing the result, inspect the archive's `transcribable_count`, `transcribed_complete_count`, and per-message transcription status. Include only complete native transcriptions in the summary context. Never fall back to Whisper or another external STT service; report any incomplete Telegram transcription as a coverage limitation.
+3. For every record whose `kind` is `photo`, take the exact message IDs from the archive and call `download_media.py` through `userbotrun.py`. First inspect its dry-run plan; then use `--execute` with a unique safe `--output-subdir`, without `--overwrite`. Open every verified local image with `view_image` (or the host's equivalent local multimodal image inspection) and add a concise visual description relevant to the conversation into the final context, including photos without captions.
+4. Do not download, play, transcribe, or visually analyze video files. Retain a video's text/caption in the context and state that its visual content was not analyzed if that can affect the summary.
+5. Keep downloaded photos only in the local runtime data directory. Do not expose raw media, transcriptions, or private identifiers beyond what the owner asked to summarize.
+
+Example collection command:
+
+```bash
+"$USERBOT_PY" scripts/userbotrun.py --account main --timeout 900 \
+  modules/summarize_chat_native.py --chat '<chat>' --date YYYY-MM-DD --do-summary
+```
+
+The archive records each photo's ID. Preview and then download only those IDs:
+
+```bash
+"$USERBOT_PY" scripts/userbotrun.py --account main --timeout 900 \
+  modules/download_media.py --chat '<chat>' --message-ids '<photo-id,photo-id>' \
+  --output-subdir '<safe-task-name>'
+# Inspect the dry-run output, then repeat the exact command with --execute.
+```
+
 For gateway lifecycle, event inbox, webhook payload, HMAC verification, and the optional current-login supervisor, load `references/gateway-webhooks.md`.
 
 For custom emoji, distinguish inline entities, reactions, profile/channel status, and emoji packs. Use `references/operation-playbook.md` before choosing an API.

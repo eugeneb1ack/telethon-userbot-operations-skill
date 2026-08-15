@@ -57,6 +57,15 @@ SECRET_PATTERNS = (
     re.compile(r"(?i)(?:api_hash|bot_token|password|phone_number)\s*=\s*[\"'][^\"']{12,}[\"']"),
 )
 LEGACY_RUNTIME_PATTERN = re.compile(rf"\b{''.join(('h', 'ermes'))}\b", re.IGNORECASE)
+SUMMARY_MEDIA_CONTRACT = (
+    "## Owner-requested media-aware summaries",
+    "`summarize_chat_native.py`",
+    "`--metadata-only`",
+    "`messages.TranscribeAudioRequest`",
+    "`download_media.py`",
+    "`view_image`",
+    "Do not download, play, transcribe, or visually analyze video files.",
+)
 
 
 def source_files() -> list[Path]:
@@ -86,6 +95,17 @@ def main() -> int:
         or not frontmatter_lines[2].partition(":")[2].strip()
     ):
         print("SKILL.md frontmatter must contain name=userbot and a description only", file=sys.stderr)
+        return 1
+
+    missing_summary_contract = [
+        required for required in SUMMARY_MEDIA_CONTRACT if required not in skill
+    ]
+    if missing_summary_contract:
+        print(
+            "SKILL.md is missing the owner-summary media contract: "
+            + ", ".join(missing_summary_contract),
+            file=sys.stderr,
+        )
         return 1
 
     blocked = []
