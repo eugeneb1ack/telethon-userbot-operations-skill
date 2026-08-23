@@ -10,10 +10,12 @@
 </p>
 
 <p align="center">
-  <strong>Give an AI coding agent a guarded, auditable interface to your own Telegram account.</strong>
+  <strong>Give an AI coding agent a guarded, auditable, and extensible interface to your own Telegram account.</strong>
+  <br>
+  Telegram channel: <a href="https://t.me/house_404"><strong>@house_404</strong></a>
 </p>
 
-This repository packages an agent-neutral skill named **`userbot`** and a secret-free [Telethon](https://docs.telethon.dev/) runtime template. It lets a coding agent inspect Telegram, work with messages and media, manage supported account features, receive events, and add a narrowly scoped operation when the existing catalog does not cover a request.
+This repository packages an agent-neutral skill named **`userbot`** and a secret-free [Telethon](https://docs.telethon.dev/) runtime template. It lets a coding agent inspect Telegram, work with messages and media, manage supported account features, receive events, and extend the local runtime with one narrowly scoped operation when the existing catalog does not cover a request.
 
 It is a user-account automation toolkit, not a Bot API wrapper. It operates through a Telegram session authorized by the account owner.
 
@@ -66,6 +68,21 @@ request → resolve exact target → dry-run preview → owner approval
         → --execute → read back final state → report verified result
 ```
 
+## How the skill extends itself
+
+The extension is performed by the connected coding agent using the contract and tools bundled with `userbot`. The skill does not download arbitrary plugins, expose a generic raw Telegram API, or rewrite itself in the background.
+
+When a request has no suitable route, the agent must:
+
+1. Query the local registry and reuse an existing gateway route or module whenever one fits.
+2. Inspect the exact installed Telethon requests, types, and known RPC errors with the bundled offline API inventory, then follow the official documentation it returns.
+3. Read the module-authoring contract and implement one focused operation under `modules/` instead of creating a general-purpose request runner.
+4. Preserve the safety model: validate inputs, refuse interactive login, make writes dry-run by default, bound timeouts and retries, and verify the final Telegram state after execution.
+5. Register the operation in the local router, document it in `MODULES.md`, and add fake-client regression tests.
+6. Run `scripts/check_module.py modules/<name>.py --full`. Only a module that passes the complete gate is ready to use.
+
+This changes source code in the local userbot runtime in response to a concrete request. It does not modify the Telegram session, commit or push code, publish a release, or broaden the operation beyond the request automatically. Capabilities excluded by the security policy remain excluded even if Telethon technically exposes them.
+
 ## What an agent can do
 
 The installed registry is the source of truth. The current template includes guarded routes for:
@@ -105,6 +122,8 @@ The guide supports two paths:
 1. **Give the guide to a coding agent.** It contains a copy-ready installation brief, exact stopping points, and verification requirements.
 2. **Install manually.** It includes commands for validation, Codex installation, runtime bootstrap, owner-only Telegram login, smoke testing, and safe updates.
 
+For automatic module authoring, the coding agent needs write access to the local runtime checkout and permission to run its offline test suite. It does not need access to session secrets: login and session authorization remain owner-only.
+
 Minimal preflight after the repository becomes public:
 
 ```bash
@@ -133,9 +152,11 @@ Transcribe today's voice messages in this chat, keep them in a queue, and report
 Prepare a dry-run for editing message 42 in @example. Do not execute it yet.
 
 Find the Telegram channels where I have posted comments, without returning private message text.
+
+Check whether a guarded route exists for changing a group title. If it does not, add one focused module with tests and show me its dry-run. Do not execute it yet.
 ```
 
-The agent first queries the local router. It should extend the runtime only when no existing route fits.
+The agent first queries the local router. It extends the runtime only when no existing route fits, and the new operation must pass the same safety and verification gates as every bundled module.
 
 ## Repository layout
 
@@ -186,5 +207,7 @@ If any credential or session material is ever committed, removing the file from 
 ## Project status and disclaimer
 
 This is an independent project built on Telethon. It is not affiliated with, endorsed by, or sponsored by Telegram. “Telegram” and related marks belong to their respective owners.
+
+Built with assistance from **OpenAI Codex** and **Hermes Agent**.
 
 Use the project only on accounts you own or are explicitly authorized to operate, and comply with Telegram's terms, local law, and the expectations of people whose messages you can access.

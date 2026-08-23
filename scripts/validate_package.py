@@ -60,6 +60,8 @@ SECRET_PATTERNS = (
     re.compile(r"(?i)(?:api_hash|bot_token|password|phone_number)\s*=\s*[\"'][^\"']{12,}[\"']"),
 )
 LEGACY_RUNTIME_PATTERN = re.compile(rf"\b{''.join(('h', 'ermes'))}\b", re.IGNORECASE)
+AI_CREDIT_FILES = {"README.md", "README.ru.md"}
+AI_CREDIT_PHRASE = f"{''.join(('Her', 'mes'))} Agent"
 SUMMARY_MEDIA_CONTRACT = (
     "## Owner-requested media-aware summaries",
     "`summarize_chat_native.py`",
@@ -128,7 +130,10 @@ def main() -> int:
             continue
         if any(pattern.search(text) for pattern in SECRET_PATTERNS):
             secret_hits.append(str(path.relative_to(ROOT)))
-        if LEGACY_RUNTIME_PATTERN.search(text):
+        legacy_scan_text = text
+        if str(path.relative_to(ROOT)) in AI_CREDIT_FILES:
+            legacy_scan_text = legacy_scan_text.replace(AI_CREDIT_PHRASE, "")
+        if LEGACY_RUNTIME_PATTERN.search(legacy_scan_text):
             legacy_runtime_hits.append(str(path.relative_to(ROOT)))
     if blocked:
         print(f"Forbidden runtime or secret-bearing paths: {', '.join(sorted(blocked))}", file=sys.stderr)
