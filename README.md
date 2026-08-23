@@ -1,115 +1,190 @@
-# Telethon Userbot Skill
+# Telegram Userbot Skill
 
-Private, portable, agent-neutral skill **`userbot`** for a local [Telethon](https://docs.telethon.dev/) userbot.
+<p align="center">
+  <a href="README.md"><strong>English</strong></a> ·
+  <a href="README.ru.md">Русский</a>
+</p>
 
-This repository is the single distribution point. It contains one active skill name, an auto-starting idle-bounded local JSON gateway, a durable Telegram event inbox, signed outbound webhooks, the current module source template, session onboarding, API inventory, and offline checks.
+<p align="center">
+  <img src="assets/telegram-userbot-skill-manga.png" alt="Telegram Userbot Skill — an AI agent operating Telegram through a guarded local gateway, drawn as a black-and-white manga illustration" width="880">
+</p>
 
-It is not a generic Telegram API cannon. It routes a request to an existing module first; only then does it permit one small, tested extension built against the installed Telethon API and official Telethon/TL documentation.
+<p align="center">
+  <strong>Give an AI coding agent a guarded, auditable interface to your own Telegram account.</strong>
+</p>
 
-## What is inside
+This repository packages an agent-neutral skill named **`userbot`** and a secret-free [Telethon](https://docs.telethon.dev/) runtime template. It lets a coding agent inspect Telegram, work with messages and media, manage supported account features, receive events, and add a narrowly scoped operation when the existing catalog does not cover a request.
+
+It is a user-account automation toolkit, not a Bot API wrapper. It operates through a Telegram session authorized by the account owner.
+
+> [!CAUTION]
+> **This skill can take full operational control of your Telegram account.**
+>
+> After a Telethon session is authorized, the connected agent may be able to read private conversations and account metadata. With your explicit approval, guarded modules may also send, edit, forward, pin, or delete messages; change profile data; manage groups and channels; download media; and perform other operations supported by the installed module catalog.
+>
+> Use it only with an agent and computer you trust. Treat the `.session` file like a password: anyone who obtains a working session may act as your account. Never upload the session, API hash, login code, 2FA password, phone number, account environment files, or private chat exports to an agent chat, GitHub, cloud storage, or a container image.
+
+## Why this exists
+
+Most Telegram automation tools expose either a bot account or an unrestricted script. This project provides a middle layer designed for AI agents:
+
+- Natural-language requests are routed to an existing, reviewed operation.
+- One local process owns the Telegram session, avoiding concurrent SQLite access.
+- Common reads use an on-demand Unix-socket gateway that exits after idle time.
+- Writes are dry-run by default and require a separate `--execute` step.
+- Batch targets are frozen before execution and final state is read back.
+- Unsupported operations go through a bounded module-authoring and test workflow.
+- Credentials, sessions, runtime logs, media, and chat data stay outside this repository.
+
+## How it works
+
+```mermaid
+flowchart LR
+    U[Account owner] --> A[AI coding agent]
+    A --> S[userbot skill and router]
+    S --> G[Local JSON gateway]
+    G --> O[Single Telethon session owner]
+    O --> T[Telegram]
+    S -. missing route .-> M[One narrow module]
+    M --> Q[Offline tests and dry-run]
+    Q --> S
+```
+
+The skill and the live Telegram runtime are deliberately separate:
+
+| Layer | Purpose | Contains secrets? |
+|---|---|---:|
+| Skill repository | Agent instructions, safety rules, validators, source template | No |
+| Installed skill | Local copy discovered by Codex or another skill-aware agent | No |
+| Userbot runtime | Telethon code, account profile, session, logs, event database, downloaded media | Yes — local only |
+| Telegram | The external account and its data | External service |
+
+For a mutating request, the intended path is:
 
 ```text
-telethon-userbot-operations-skill/
-├── SKILL.md                         # canonical skill: name=userbot
-├── INSTALL.md
-├── SECURITY.md
-├── references/
-│   ├── session-bootstrap.md
-│   ├── gateway-webhooks.md
-│   ├── module-authoring.md
-│   ├── operation-playbook.md
-│   └── channel-rich-publishing.md
-├── scripts/
-│   ├── bootstrap_userbot_project.py  # create a NEW project only
-│   ├── verify_userbot_session.py     # offline / explicit online readiness check
-│   ├── telethon_api_inventory.py     # zero-network API introspection
-│   └── test_*.py / validate_package.py
-└── templates/userbot/                # secret-free current project template
-    ├── core/
-    ├── modules/
-    ├── scripts/userbotctl.py           # one-command on-demand gateway RPC
-    ├── scripts/userbotrun.py           # locked, timeout-bounded direct modules
-    ├── scripts/check_module.py         # deterministic generated-module gate
-    ├── scripts/userbot_module_registry.py
-    ├── tests/
-    └── docs/
+request → resolve exact target → dry-run preview → owner approval
+        → --execute → read back final state → report verified result
 ```
 
-The registry and module catalog are validated from source instead of documented with a manually maintained count. A context-specific local publisher is deliberately excluded. The package has no account configuration, Telegram session, runtime files, chat exports, media, phone number, API credentials, bot token, webhook secret, or third-party keys.
+## What an agent can do
 
-## Fast on-demand access
+The installed registry is the source of truth. The current template includes guarded routes for:
 
-Agents call one command. It reuses a live mode-`0600` Unix socket or starts a
-`gateway-only` process and retries automatically. The on-demand owner exits 60
-seconds after the last local RPC:
+- **Messages:** search history, inspect recent messages, send, edit your own message, forward exact message IDs, pin and unpin.
+- **Conversations:** list personal chats, groups, channels, bots, members, owned channels, and channels where the account has participated in comments.
+- **Voice and media:** request Telegram-native voice transcription, queue a media-aware daily summary, preview or download selected attachments into local runtime storage.
+- **Account and identity:** inspect or update supported profile fields and custom-emoji status.
+- **Groups and reactions:** inspect or change one member's permissions, mention members, react to messages, and remove your own messages through guarded batch plans.
+- **Events and integrations:** collect direct-message, mention, and reply events in a local SQLite inbox; optionally deliver compact HMAC-signed webhooks.
+- **Extension:** inspect the installed Telethon API and add one focused, tested module when no route exists.
 
-```bash
-cd "$USERBOT_ROOT"
-venv/bin/python scripts/userbotctl.py --account main status
-venv/bin/python scripts/userbotctl.py --account main recent-dms --limit 3
-venv/bin/python scripts/userbotctl.py --account main events list --unread
-```
+This is not an unrestricted raw Telegram API console. Authentication changes, password or recovery flows, passkeys, phone-number changes, account deletion, payments, gifts, Stars, refunds, SMS jobs, and secret-chat internals are intentionally outside the generic extension path.
 
-Incoming direct messages, mentions and replies are deduplicated in a local SQLite inbox. An optional HMAC-signed HTTPS webhook delivers the same compact events to any external workflow or agent. See [references/gateway-webhooks.md](references/gateway-webhooks.md).
+## Safety model
 
-One account lock prevents concurrent clients from opening the same Telethon
-SQLite session. Registry direct modules run through `scripts/userbotrun.py`,
-which stops only an idle gateway and terminates a stuck module after a bounded
-timeout.
+- The owner performs first login locally and types the Telegram code and 2FA password personally.
+- Agents never ask for, read, type, copy, upload, archive, or commit credentials or session material.
+- Direct helpers refuse interactive login and require an already authorized session.
+- One lock protects each account session from concurrent Telethon clients.
+- Read-only gateway calls may run directly; Telegram writes require an exact preview and explicit approval.
+- The optional webhook is notification transport, never authorization for a Telegram write.
+- Logs contain bounded operational metadata, not credentials or full private histories.
+- Docker is not used to bypass host sandbox restrictions or to create a second owner of the session.
 
-## Current routed capabilities
+Read the complete boundary in [SECURITY.md](SECURITY.md).
 
-The live project registry is authoritative. At the current package revision it routes:
+## Installation
 
-| Area | Existing routes |
-|---|---|
-| Read-only | members, history search, media preview/download plan, native transcription, native summary, message count, personal/group/channel dialog lists |
-| Messages | send, edit own message, forward exact IDs, inspect/pin/unpin exact message |
-| Identity and custom emoji | inspect/update profile, custom emoji status, create emoji pack, react using custom emoji |
-| Group work | inspect/change one member’s permissions, reactions, mention plan, cleanup own messages across one/all eligible chats |
-| Contacts | add one contact |
-| Channel publication | technical contract for an explicitly approved rich-media channel post; a new dedicated module is required when the registry has no route |
+Choose your language:
 
-Run the actual local router before every task; it does no Telegram I/O:
+- [Installation guide in English](INSTALL.md)
+- [Инструкция по установке на русском](INSTALL.ru.md)
 
-```bash
-cd "$USERBOT_ROOT"
-"$USERBOT_PY" scripts/userbot_module_registry.py --query '<request>'
-```
+The guide supports two paths:
 
-## Bounded self-improvement
+1. **Give the guide to a coding agent.** It contains a copy-ready installation brief, exact stopping points, and verification requirements.
+2. **Install manually.** It includes commands for validation, Codex installation, runtime bootstrap, owner-only Telegram login, smoke testing, and safe updates.
 
-When no route exists, the canonical `userbot` skill tells an agent to:
-
-1. query the installed Telethon API with `telethon_api_inventory.py`;
-2. read the matching official Telethon/TL documentation;
-3. implement one narrow module using central account config and an existing authorized session;
-4. default every Telegram write to dry-run, require explicit `--execute`, and verify actual state afterwards;
-5. add fake-client tests, update the registry and `MODULES.md`, then run the full offline suite.
-6. pass `scripts/check_module.py modules/<name>.py --full` before the module is used.
-
-That is deliberate, bounded maintenance — not autonomous uncontrolled rewriting. The skill does not overwrite a working project, request secrets, run interactive login, or publish a new GitHub revision without explicit owner direction.
-
-## Session boundary
-
-The owner creates and authorizes a session locally. An agent never receives or operates Telegram login code, 2FA, `.session`, API hash, phone number, or account env contents.
-
-Use [references/session-bootstrap.md](references/session-bootstrap.md) for the exact first-login, import, and verifier procedure.
-
-## Validate the repository
-
-No command below contacts Telegram or makes a network request:
+Minimal preflight after the repository becomes public:
 
 ```bash
+git clone https://github.com/eugeneb1ack/telethon-userbot-operations-skill.git \
+  "$HOME/telethon-userbot-skill"
+cd "$HOME/telethon-userbot-skill"
+
 python3 scripts/validate_package.py
 python3 scripts/test_bootstrap_userbot_project.py
 python3 scripts/test_session_checker.py
 ```
 
-## Install in Codex or another agent
+These checks are offline: they do not connect to Telegram or inspect an account.
 
-Use [INSTALL.md](INSTALL.md). Codex uses `~/.codex/skills/userbot`; another agent can use its documented skill directory or call the JSON CLI directly. All agents share one runtime and must not open separate copies of `userbot.session`.
+## Example requests
 
-## Private-use notice
+After installation and local session authorization, the owner can ask an agent:
 
-Keep this repository private. Never add `.env`, account files, session databases, runtime data, downloaded media, archives, phone numbers, tokens, API hashes, access hashes, or document file references.
+```text
+Show my three latest incoming direct messages.
+
+Find every mention of me in this group today and summarize the surrounding discussion.
+
+Transcribe today's voice messages in this chat, keep them in a queue, and report incomplete items separately.
+
+Prepare a dry-run for editing message 42 in @example. Do not execute it yet.
+
+Find the Telegram channels where I have posted comments, without returning private message text.
+```
+
+The agent first queries the local router. It should extend the runtime only when no existing route fits.
+
+## Repository layout
+
+```text
+telethon-userbot-operations-skill/
+├── SKILL.md                         # canonical agent instructions
+├── README.md / README.ru.md         # project overview
+├── INSTALL.md / INSTALL.ru.md       # user + agent installation guides
+├── SECURITY.md                      # credential, session, and write boundaries
+├── assets/                          # public README artwork
+├── references/                      # operation, session, webhook, authoring guides
+├── scripts/
+│   ├── bootstrap_userbot_project.py # creates a NEW runtime only
+│   ├── verify_userbot_session.py    # offline / explicit online readiness check
+│   ├── telethon_api_inventory.py    # zero-network API introspection
+│   └── validate_package.py          # package and secret-boundary validation
+└── templates/userbot/               # secret-free runtime source template
+    ├── core/                         # config, locking, gateway, event store
+    ├── modules/                      # guarded Telegram operations
+    ├── scripts/                      # router, runner, daemon, account setup
+    ├── tests/                        # offline fake-client regression suite
+    └── docs/                         # module-authoring contract
+```
+
+## Validate the package
+
+No command below contacts Telegram:
+
+```bash
+python3 scripts/validate_package.py
+python3 scripts/test_bootstrap_userbot_project.py
+python3 scripts/test_interactive_account_setup.py
+python3 scripts/test_session_checker.py
+```
+
+Runtime module development additionally uses the generated project gate:
+
+```bash
+venv/bin/python scripts/check_module.py modules/<module_name>.py --full
+```
+
+## Public-repository boundary
+
+The repository is designed to be public, but a live runtime is not. Before every commit or release, confirm that the checkout contains no `.env`, `accounts/`, `runtime/`, `.session`, SQLite databases, chat archives, downloaded media, phone numbers, API credentials, webhook secrets, tokens, or real Telegram document references.
+
+If any credential or session material is ever committed, removing the file from the latest revision is not enough. Revoke or rotate the affected credential/session and purge it from Git history before publishing again.
+
+## Project status and disclaimer
+
+This is an independent project built on Telethon. It is not affiliated with, endorsed by, or sponsored by Telegram. “Telegram” and related marks belong to their respective owners.
+
+Use the project only on accounts you own or are explicitly authorized to operate, and comply with Telegram's terms, local law, and the expectations of people whose messages you can access.

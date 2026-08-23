@@ -14,9 +14,12 @@ TEMPLATE = ROOT / "templates" / "userbot"
 REQUIRED = (
     "SKILL.md",
     "README.md",
+    "README.ru.md",
     "INSTALL.md",
+    "INSTALL.ru.md",
     "SECURITY.md",
     ".gitignore",
+    "assets/telegram-userbot-skill-manga.png",
     "references/operation-playbook.md",
     "references/gateway-webhooks.md",
     "references/channel-rich-publishing.md",
