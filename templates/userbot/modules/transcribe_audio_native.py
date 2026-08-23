@@ -126,9 +126,14 @@ async def transcribe_message(
     chat: str | int,
     message_id: int,
     timeout: float,
+    request_timeout: float = 30.0,
     expected_sender_id: int | None = None,
 ) -> Result:
     """Transcribe one message using an already-connected client."""
+    if timeout <= 0:
+        raise ValueError("timeout must be positive")
+    if request_timeout <= 0:
+        raise ValueError("request_timeout must be positive")
     entity = await _resolve_input_entity(client, chat)
     message = await client.get_messages(entity, ids=message_id)
     if not message:
@@ -155,18 +160,26 @@ async def transcribe_message(
     async def on_update(update: Any) -> None:
         if getattr(update, "msg_id", None) != message_id:
             return
-        if utils.get_peer_id(getattr(update, "peer", None)) != utils.get_peer_id(entity):
+        try:
+            same_peer = utils.get_peer_id(getattr(update, "peer", None)) == utils.get_peer_id(entity)
+        except (TypeError, ValueError):
+            same_peer = False
+        if not same_peer:
             return
         await updates.put(update)
 
     client.add_event_handler(on_update, Raw(types.UpdateTranscribedAudio))
     try:
-        response = await client(
-            functions.messages.TranscribeAudioRequest(
-                peer=entity,
-                msg_id=message_id,
-            )
+        request = functions.messages.TranscribeAudioRequest(
+            peer=entity,
+            msg_id=message_id,
         )
+        try:
+            response = await asyncio.wait_for(client(request), timeout=request_timeout)
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(
+                f"native transcription request timed out after {request_timeout:g}s"
+            ) from exc
         result = _result_from_response(
             response,
             chat=chat,
@@ -212,6 +225,7 @@ async def transcribe(
     chat: str | int,
     message_id: int,
     timeout: float,
+    request_timeout: float = 30.0,
     expected_sender_id: int | None = None,
 ) -> Result:
     settings = load_settings(account)
@@ -227,6 +241,7 @@ async def transcribe(
             chat=chat,
             message_id=message_id,
             timeout=timeout,
+            request_timeout=request_timeout,
             expected_sender_id=expected_sender_id,
         )
     finally:
@@ -252,6 +267,12 @@ def _parser() -> argparse.ArgumentParser:
         help="seconds to wait for the final native transcription (default: 300)",
     )
     parser.add_argument(
+        "--request-timeout",
+        type=float,
+        default=30,
+        help="seconds to wait for TranscribeAudioRequest itself (default: 30)",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="kept for a stable skill-facing CLI; output is always JSON",
@@ -269,6 +290,7 @@ def main() -> int:
                 chat=chat,
                 message_id=args.message_id,
                 timeout=args.timeout,
+                request_timeout=args.request_timeout,
                 expected_sender_id=args.sender_id,
             )
         )

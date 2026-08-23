@@ -125,11 +125,28 @@ When the account owner asks to summarize a chat, direct dialog, group, or channe
 4. Do not download, play, transcribe, or visually analyze video files. Retain a video's text/caption in the context and state that its visual content was not analyzed if that can affect the summary.
 5. Keep downloaded photos only in the local runtime data directory. Do not expose raw media, transcriptions, or private identifiers beyond what the owner asked to summarize.
 
+### Native STT queue, progress, and recovery
+
+`summarize_chat_native.py` submits voice/audio/video-note records through a bounded FIFO queue. Keep its default single worker unless current Telegram behaviour has been verified with a higher value; parallel `TranscribeAudioRequest` calls can leave a pending item without a completion update.
+
+- The module writes its JSON archive before STT and atomically updates it after every completed item. It also writes a sidecar `<archive>.progress.jsonl` with start, retry, and completion events (no transcript text). Use a stable `--output` path and inspect that progress file during a long run.
+- `--transcription-request-timeout` bounds the request itself; `--transcription-timeout` bounds waiting for Telegram's final native update. Transient timeout/network/FloodWait failures retry with backoff. A permanent bad message or sender mismatch is recorded once and the queue continues.
+- If a bounded `userbotrun.py` process is stopped or times out, rerun the same window and `--output` with `--resume`. Completed native transcripts are retained and skipped; incomplete records are retried. Report archive coverage (`transcribable_count`, `transcribed_complete_count`) rather than treating a partial archive as complete.
+- Do not run a second direct helper against the same account while this queue is active. Use `userbotrun.py` and one caller only.
+
 Example collection command:
 
 ```bash
 "$USERBOT_PY" scripts/userbotrun.py --account main --timeout 900 \
   modules/summarize_chat_native.py --chat '<chat>' --date YYYY-MM-DD --do-summary
+```
+
+For a resumable long window with explicit progress:
+
+```bash
+"$USERBOT_PY" scripts/userbotrun.py --account main --timeout 3600 \
+  modules/summarize_chat_native.py --chat '<chat>' --date YYYY-MM-DD \
+  --output 'runtime/main/data/transcripts/<safe-name>.json' --resume --do-summary
 ```
 
 The archive records each photo's ID. Preview and then download only those IDs:
@@ -143,11 +160,26 @@ The archive records each photo's ID. Preview and then download only those IDs:
 
 For gateway lifecycle, event inbox, webhook payload, HMAC verification, and the optional current-login supervisor, load `references/gateway-webhooks.md`.
 
+## Sandbox and diagnostics
+
+- A `PermissionError` on `runtime/<account>/logs/gateway.*` from the Codex sandbox is an environment filesystem policy failure, not proof that Telegram, gateway, session, or STT failed. Keep the canonical userbot process/session ownership model unchanged and request narrow elevated access for the exact read-only runtime command when it is needed.
+- Docker does not bypass the host application's filesystem or network sandbox. Do not copy or mount `.env`, session files, API hashes, phone data, or the account runtime into a temporary container merely to inspect logs. It would add another session owner and a broader secret boundary.
+- Prefer the summary sidecar progress JSONL for long STT work. For gateway lifecycle diagnosis, use `userbotctl.py --account main status` and, when necessary, a narrowly approved read of the existing runtime logs. A future dedicated diagnostic route should return only bounded, redacted log tails through the gateway; do not expose raw runtime files through a generic RPC.
+
 For custom emoji, distinguish inline entities, reactions, profile/channel status, and emoji packs. Use `references/operation-playbook.md` before choosing an API.
 
 For an explicitly approved channel post with local media, use `references/channel-rich-publishing.md`. If the registry has no purpose-built module, add one through the authoring contract; do not bypass the dry-run/read-back boundary with an ad-hoc send.
 
 Never build a generic raw-request runner or automate auth, recovery, passkeys, phone changes, account deletion, payments/Stars/gifts/refunds, SMS jobs, or secret-chat internals.
+
+## Verified comment-channel snapshot for account `main`
+
+Read-only scan verified on 2026-08-15 across 25 accessible megagroup dialogs and 3,678 inspected messages. It found these broadcast channels linked to discussion chats where the account wrote reply/comment messages:
+
+- `Quantumult X News` — `@QuanXNews` — channel ID `1361573877` — 1 comment.
+- `Rose Delete` — `@rosedelete` — channel ID `3527911700` — 25 comments.
+
+The scan excludes ordinary groups that are not linked to a broadcast channel and does not store or print comment text. This is an account- and time-specific snapshot; refresh it with the `comment_channels.py` module when the list needs to be current.
 
 ## Verification after code changes
 

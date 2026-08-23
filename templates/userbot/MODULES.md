@@ -51,9 +51,10 @@ Do not invoke a direct helper bare while any gateway owns the session.
 
 | Module | Role |
 |---|---|
-| `transcribe_audio_native.py` | Native Telegram audio transcription via `messages.TranscribeAudioRequest`. |
-| `summarize_chat_native.py` | Moscow-time bounded chat collection, native STT and local archive/context generation. |
+| `transcribe_audio_native.py` | Native Telegram audio transcription via `messages.TranscribeAudioRequest`, with a separate request timeout and final-update timeout. |
+| `summarize_chat_native.py` | Moscow-time bounded chat collection, queued native STT, atomically updated archive, JSONL progress sidecar, and `--resume` recovery. |
 | `count_user_messages.py` | Count one user’s messages for a time window; only `--send` publishes its report. |
+| `comment_channels.py` | List broadcast channels linked to accessible discussion groups where the account wrote reply/comment messages. | Read-only; message text is not returned. |
 | `recent_personal_incoming.py` | List recent incoming personal-dialog senders with timestamps only; message text and media are not returned. |
 | `personal_chats.py`, `group_chats.py`, `channel_chats.py`, `bot_chats.py` | JSON/text dialog inventory CLIs. |
 | `profile_settings.py` | Inspect own profile and prepare changes to name, bio, username, or custom-emoji status. Custom emoji documents are resolved before a status change. |

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import tempfile
@@ -14,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core import config, module_loader
-from modules import purge_me, transcribe_audio_native
+from modules import purge_me, summarize_chat_native, transcribe_audio_native
 
 
 class ConfigSelectionTests(unittest.TestCase):
@@ -108,6 +109,94 @@ class NativeTranscriptionTests(unittest.TestCase):
 
         resolved = asyncio.run(transcribe_audio_native._resolve_input_entity(FakeClient(), -10042))
         self.assertEqual(resolved, "input:42")
+
+    def test_request_timeout_cancels_stuck_transcribe_request(self) -> None:
+        class FakeMessage:
+            voice = True
+            out = False
+            sender_id = 7
+            reply_to = None
+            file = SimpleNamespace(duration=4)
+
+            async def get_sender(self):
+                return SimpleNamespace(id=7, first_name="Voice", last_name="User", username=None)
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.handlers: list[object] = []
+
+            async def get_input_entity(self, _value):
+                return SimpleNamespace(id=42)
+
+            async def get_messages(self, _entity, ids):
+                return FakeMessage() if ids == 11 else None
+
+            def add_event_handler(self, callback, _event):
+                self.handlers.append(callback)
+
+            def remove_event_handler(self, callback, _event):
+                self.handlers.remove(callback)
+
+            async def __call__(self, _request):
+                await asyncio.sleep(60)
+
+        with self.assertRaises(TimeoutError):
+            asyncio.run(
+                transcribe_audio_native.transcribe_message(
+                    FakeClient(),
+                    chat=-10042,
+                    message_id=11,
+                    timeout=1,
+                    request_timeout=0.01,
+                    expected_sender_id=7,
+                )
+            )
+
+
+class NativeTranscriptionQueueTests(unittest.TestCase):
+    def test_queue_is_fifo_and_persists_progress(self) -> None:
+        records = [
+            {
+                "id": index,
+                "kind": "voice",
+                "author": {"id": 7},
+                "transcription": None,
+            }
+            for index in range(5)
+        ]
+        calls: list[int] = []
+
+        async def fake_transcribe(*_args, **kwargs):
+            calls.append(kwargs["message_id"])
+            return transcribe_audio_native.Result(
+                status="ok",
+                complete=True,
+                message_id=kwargs["message_id"],
+                sender_id=7,
+                text=f"text-{kwargs['message_id']}",
+            )
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            summarize_chat_native, "transcribe_message", fake_transcribe
+        ):
+            progress = Path(tmp) / "progress.jsonl"
+            asyncio.run(
+                summarize_chat_native._transcribe_records(
+                    object(),
+                    -10042,
+                    records,
+                    timeout=1,
+                    concurrency=1,
+                    request_timeout=1,
+                    retries=0,
+                    progress_path=progress,
+                )
+            )
+            events = [json.loads(line) for line in progress.read_text(encoding="utf-8").splitlines()]
+
+        self.assertEqual(calls, [0, 1, 2, 3, 4])
+        self.assertEqual([event["message_id"] for event in events], [0, 1, 2, 3, 4])
+        self.assertTrue(all(record["transcription"]["complete"] for record in records))
 
 
 class PurgeSafetyTests(unittest.TestCase):

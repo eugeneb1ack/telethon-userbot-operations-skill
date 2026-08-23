@@ -36,6 +36,14 @@ class UserbotModuleRegistryTests(unittest.TestCase):
         self.assertEqual(result["operations"][0]["slug"], "profile")
         self.assertEqual(result["operations"][0]["module"], "profile_settings.py")
 
+    def test_comment_channel_request_routes_to_comment_module(self) -> None:
+        result = self.query("перечисли каналы где я писал комментарии")
+        self.assertTrue(result["ok"])
+        operation = result["operations"][0]
+        self.assertEqual(operation["slug"], "comment_channels")
+        self.assertEqual(operation["module"], "comment_channels.py")
+        self.assertEqual(operation["mode"], "read_only")
+
     def test_unknown_operation_returns_nonzero_json_error(self) -> None:
         completed = subprocess.run(
             [sys.executable, str(REGISTRY), "--operation", "not_real", "--json"],
