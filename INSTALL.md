@@ -17,7 +17,7 @@ There are three separate locations:
 | Location | Suggested path | Purpose |
 |---|---|---|
 | Source checkout | `~/telethon-userbot-skill` | Git clone used for validation and updates |
-| Installed Codex skill | `$CODEX_HOME/skills/userbot` (default: `~/.codex/skills/userbot`) | Files discovered by Codex |
+| Installed Codex skill | `~/.agents/skills/userbot` for current Codex Desktop | Files discovered by Codex |
 | Private runtime | `~/Documents/telethon-userbot` | Account profile, session, logs, event DB, media |
 
 Never place account or runtime files in the source checkout or installed skill.
@@ -43,6 +43,7 @@ Safety requirements:
 - If an installed userbot skill already exists, inspect it and ask before replacing or backing it up.
 - Do not ask for or inspect API_ID, API_HASH, phone number, Telegram code, 2FA password, account env contents, or .session contents.
 - Do not perform the first Telegram login for the user.
+- If the owner does not have an API ID/API hash yet, guide them through section 0: provide the exact official link, explain where to click, and distinguish these credentials from a BotFather token. Never ask the owner to send the resulting values.
 - Stop after dependencies are installed and tell the owner to run the two owner-only commands from INSTALL.md in their own local terminal.
 - After the owner confirms login, run the offline verifier. Run the online authorization check only with explicit approval.
 - Do not make any Telegram write as part of installation.
@@ -61,6 +62,27 @@ The rest of this document is the deterministic procedure the agent should follow
 - An API ID and API hash created by the owner at [my.telegram.org/apps](https://my.telegram.org/apps).
 
 The API hash is a secret. The owner enters it only into the local interactive setup script.
+
+## 0. Get a Telegram API ID and API hash
+
+These are **Telegram application** credentials that allow Telethon to connect to your personal account. They are not a Telegram bot token and do not come from BotFather.
+
+1. Open the official [my.telegram.org/apps](https://my.telegram.org/apps) page. Use the `my.telegram.org` subdomain, not the main `telegram.org` website.
+2. Enter the phone number of your Telegram account in international format, such as `+12025550123`, and select `Next`.
+3. Telegram sends the confirmation code through Telegram, not by SMS. Enter that code only on `my.telegram.org`.
+4. After signing in, open `API development tools`.
+5. If Telegram asks you to register an application, complete the required fields. The exact form may change. Neutral values suitable for a local userbot include:
+   - `App title`: for example, `Local Telethon Userbot`;
+   - `Short name`: a short Latin name such as `localuserbot`;
+   - `Platform`: `Desktop`;
+   - `URL`: leave it blank if the field is optional;
+   - `Description`: for example, `Local Telegram client for my own account`.
+6. After the application is created, the page displays `App api_id` and `App api_hash`. The `api_id` is a number; the `api_hash` is a 32-character hexadecimal string.
+7. Do not send these values to an agent or paste them into a GitHub issue, chat, or README. Keep the page open and later enter both values yourself into the local `setup_account.py` prompt in step 8.
+
+Do not use an API ID/API hash copied from an example or somebody else's repository. If an application is already registered for this number, `API development tools` displays its existing credentials; you do not need a new Telegram account for this installation.
+
+When an agent is guiding the installation, it must explain this section one action at a time and wait for a confirmation such as “I have the API ID and API hash.” The agent does not need the values themselves.
 
 ## 1. Clone the source
 
@@ -102,11 +124,11 @@ Do not continue if package validation reports forbidden runtime paths or potenti
 
 ## 3. Install the skill in Codex
 
-Codex discovers user-installed skills under `$CODEX_HOME/skills`, defaulting to `~/.codex/skills`.
+Current Codex Desktop uses `~/.agents/skills` for user-installed skills. This is separate from bundled system skills under `.codex/skills/.system`; do not copy this repository there. If your Codex version explicitly reports a different user-skill directory, use the path it reports instead of guessing.
 
 ```bash
-export CODEX_USER_HOME="${CODEX_HOME:-$HOME/.codex}"
-export USERBOT_SKILL_DIR="$CODEX_USER_HOME/skills/userbot"
+export CODEX_USER_SKILLS_DIR="$HOME/.agents/skills"
+export USERBOT_SKILL_DIR="$CODEX_USER_SKILLS_DIR/userbot"
 
 test ! -e "$USERBOT_SKILL_DIR"
 mkdir -p "$USERBOT_SKILL_DIR"
@@ -193,6 +215,8 @@ python3 scripts/setup_account.py --account main
 ```
 
 The setup script asks locally for API ID, hidden API hash, phone number, and session name. The Telethon launcher then asks for the Telegram login code and, if enabled, the 2FA password.
+
+If you do not have the API ID/API hash yet, return to [step 0](#0-get-a-telegram-api-id-and-api-hash). Do not enter a BotFather bot token here; it is a different credential type.
 
 - Type the code and password yourself.
 - Do not paste them into an agent chat.

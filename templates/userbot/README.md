@@ -72,6 +72,12 @@ venv/bin/python scripts/userbot_memory.py --account main recall \
 
 ## Первая регистрация session
 
+Сначала владелец должен получить собственные Telegram application credentials:
+
+1. Открыть [my.telegram.org/apps](https://my.telegram.org/apps) и войти по номеру аккаунта. Код приходит в Telegram, а не по SMS.
+2. Открыть `API development tools`; при необходимости зарегистрировать локальное приложение, например с `Platform: Desktop`.
+3. Сохранить показанные `App api_id` и `App api_hash` для локального ввода. Это не bot token от BotFather; значения нельзя отправлять агенту или публиковать.
+
 Для account profile с `SESSION_NAME=main` Telethon создаёт session в:
 
 ```text

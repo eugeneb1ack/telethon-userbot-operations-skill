@@ -17,7 +17,7 @@
 | Папка | Рекомендуемый путь | Назначение |
 |---|---|---|
 | Checkout исходников | `~/telethon-userbot-skill` | Git clone для проверки и обновлений |
-| Установленный навык Codex | `$CODEX_HOME/skills/userbot` (по умолчанию `~/.codex/skills/userbot`) | Файлы, которые обнаруживает Codex |
+| Установленный навык Codex | `~/.agents/skills/userbot` для текущего Codex Desktop | Файлы, которые обнаруживает Codex |
 | Приватный runtime | `~/Documents/telethon-userbot` | Профиль аккаунта, session, логи, база событий, медиа |
 
 Никогда не переносите account или runtime-файлы в checkout исходников или установленный навык.
@@ -43,6 +43,7 @@ https://github.com/eugeneb1ack/telethon-userbot-operations-skill
 - Если навык userbot уже установлен, изучи его и спроси разрешение перед заменой или созданием backup.
 - Не проси и не читай API_ID, API_HASH, номер телефона, Telegram-код, пароль 2FA, содержимое account env и .session.
 - Не выполняй первый Telegram login за пользователя.
+- Если у владельца ещё нет API ID/API hash, проведи его по разделу 0: дай точную официальную ссылку, объясни, куда нажать и чем эти реквизиты отличаются от токена BotFather. Не проси присылать полученные значения.
 - После установки зависимостей остановись и попроси владельца самому выполнить две owner-only команды из INSTALL.ru.md в локальном терминале.
 - После подтверждения владельца запусти offline verifier. Online-проверку авторизации выполняй только после явного разрешения.
 - Не делай никаких Telegram write-операций во время установки.
@@ -61,6 +62,27 @@ https://github.com/eugeneb1ack/telethon-userbot-operations-skill
 - API ID и API hash, созданные владельцем на [my.telegram.org/apps](https://my.telegram.org/apps).
 
 API hash является секретом. Владелец вводит его только в локальный интерактивный setup-скрипт.
+
+## 0. Получите Telegram API ID и API hash
+
+Это реквизиты **Telegram application** для подключения Telethon к вашему личному аккаунту. Это не токен Telegram-бота и не данные от BotFather.
+
+1. Откройте официальный сайт [my.telegram.org/apps](https://my.telegram.org/apps). Нужен именно поддомен `my.telegram.org`, а не главная страница `telegram.org`.
+2. Введите номер своего Telegram-аккаунта в международном формате, например `+79991234567`, и нажмите `Next`.
+3. Telegram отправит код подтверждения в Telegram, а не по SMS. Введите этот код только на странице `my.telegram.org`.
+4. После входа откройте `API development tools`.
+5. Если Telegram предлагает зарегистрировать приложение, заполните обязательные поля. Набор полей может немного меняться. Для локального userbot подходят нейтральные значения:
+   - `App title`: например `Local Telethon Userbot`;
+   - `Short name`: короткое имя латиницей, например `localuserbot`;
+   - `Platform`: `Desktop`;
+   - `URL`: оставьте пустым, если поле необязательное;
+   - `Description`: например `Local Telegram client for my own account`.
+6. После создания приложения страница покажет `App api_id` и `App api_hash`. `api_id` — число, `api_hash` — строка из 32 шестнадцатеричных символов.
+7. Не отправляйте эти значения агенту и не вставляйте их в GitHub issue, чат или README. Оставьте страницу открытой и позже введите оба значения самостоятельно в локальный `setup_account.py` из шага 8.
+
+Не используйте случайные API ID/API hash из примеров или чужого репозитория. Если приложение для этого номера уже зарегистрировано, `API development tools` покажет существующие реквизиты — создавать новый Telegram-аккаунт для установки не нужно.
+
+Если установку ведёт агент, он должен объяснить этот раздел по одному действию за раз и дождаться сообщения вроде «API ID и API hash получил». Самих значений агенту не нужны.
 
 ## 1. Клонируйте исходники
 
@@ -102,11 +124,11 @@ session_checker_test=ok
 
 ## 3. Установите навык в Codex
 
-Codex обнаруживает пользовательские навыки в `$CODEX_HOME/skills`, по умолчанию — в `~/.codex/skills`.
+Текущий Codex Desktop использует `~/.agents/skills` для пользовательских навыков. Это отдельно от встроенных системных навыков под `.codex/skills/.system`: туда копировать репозиторий нельзя. Если ваша версия Codex явно показывает другой каталог пользовательских навыков, используйте показанный ею путь и не угадывайте его.
 
 ```bash
-export CODEX_USER_HOME="${CODEX_HOME:-$HOME/.codex}"
-export USERBOT_SKILL_DIR="$CODEX_USER_HOME/skills/userbot"
+export CODEX_USER_SKILLS_DIR="$HOME/.agents/skills"
+export USERBOT_SKILL_DIR="$CODEX_USER_SKILLS_DIR/userbot"
 
 test ! -e "$USERBOT_SKILL_DIR"
 mkdir -p "$USERBOT_SKILL_DIR"
@@ -193,6 +215,8 @@ python3 scripts/setup_account.py --account main
 ```
 
 Setup-скрипт локально запросит API ID, скрытый API hash, номер телефона и имя session. Затем Telethon launcher попросит Telegram-код и, если включено, пароль 2FA.
+
+Если API ID/API hash ещё не получены, вернитесь к [шагу 0](#0-получите-telegram-api-id-и-api-hash). Не вводите сюда bot token от BotFather: это другой тип учётных данных.
 
 - Введите код и пароль самостоятельно.
 - Не вставляйте их в чат с агентом.

@@ -37,8 +37,15 @@ class InteractiveAccountSetupTests(unittest.TestCase):
         self.assertEqual(values.session_name, "main")
         self.assertEqual(values.phone_number, "+79991234567")
         self.assertEqual(values.api_hash, "a" * 32)
-        self.assertEqual(len(feedback), 2)
+        errors = [message for message in feedback if message.startswith("Ошибка:")]
+        self.assertEqual(len(errors), 2)
         self.assertTrue(all("a" * 32 not in message for message in feedback))
+
+        guidance = "\n".join(feedback)
+        self.assertIn("https://my.telegram.org/apps", guidance)
+        self.assertIn("API development tools", guidance)
+        self.assertIn("BotFather", guidance)
+        self.assertIn("локальном терминале", guidance)
 
     def test_accepts_international_number_with_or_without_plus_for_russia(self) -> None:
         self.assertEqual(setup_account._validate_phone_number("+79991234567"), "+79991234567")

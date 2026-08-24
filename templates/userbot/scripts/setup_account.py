@@ -20,6 +20,7 @@ SESSION_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
 API_HASH_RE = re.compile(r"[0-9a-fA-F]{32}\Z")
 PHONE_NUMBER_RE = re.compile(r"\+[1-9]\d{6,14}\Z")
 RUSSIAN_PHONE_NUMBER_WITHOUT_PLUS_RE = re.compile(r"7\d{10}\Z")
+TELEGRAM_API_CREDENTIALS_URL = "https://my.telegram.org/apps"
 
 
 @dataclass(frozen=True)
@@ -85,6 +86,12 @@ def collect_account_values(
     secret_input: Callable[[str], str] = getpass.getpass,
     output: Callable[[str], None] = print,
 ) -> AccountValues:
+    output(
+        "API ID и API hash создаются владельцем на "
+        f"{TELEGRAM_API_CREDENTIALS_URL} -> API development tools."
+    )
+    output("Это реквизиты Telegram application, а не bot token от BotFather.")
+    output("Введи их только здесь, в локальном терминале; не отправляй значения агенту или в чат.")
     api_id = int(_prompt_until_valid("Telegram API ID: ", input_func, _validate_api_id, output))
     api_hash = _prompt_until_valid(
         "Telegram API hash (скрыт): ", secret_input, _validate_api_hash, output

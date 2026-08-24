@@ -143,6 +143,8 @@ The guide supports two paths:
 1. **Give the guide to a coding agent.** It contains a copy-ready installation brief, exact stopping points, and verification requirements.
 2. **Install manually.** It includes commands for validation, Codex installation, runtime bootstrap, owner-only Telegram login, smoke testing, and safe updates.
 
+The guide starts by obtaining the owner's Telegram application credentials at [my.telegram.org/apps](https://my.telegram.org/apps): it covers `API development tools`, explains the form, and makes clear that an API ID/API hash is not a BotFather token. An agent should walk the owner through these actions without asking them to send the credential values.
+
 For automatic module authoring, the coding agent needs write access to the local runtime checkout and permission to run its offline test suite. It does not need access to session secrets: login and session authorization remain owner-only.
 
 Minimal preflight after the repository becomes public:

@@ -1,6 +1,6 @@
 ---
 name: userbot
-description: Operate and extend a local agent-neutral Telethon userbot through its on-demand gateway, bounded semantic memory, and guarded modules. Use to inspect Telegram data, reuse and revalidate compact local knowledge, receive direct-message/mention/reply events, send or modify messages, manage groups or profiles, configure signed webhooks, bootstrap a userbot, verify a session, or add and validate one guarded Telethon module.
+description: Install, operate, and extend a local agent-neutral Telethon userbot through its on-demand gateway, bounded semantic memory, and guarded modules. Use to guide an owner through safe setup, inspect Telegram data, reuse and revalidate compact local knowledge, receive direct-message/mention/reply events, send or modify messages, manage groups or profiles, configure signed webhooks, bootstrap a userbot, verify a session, or add and validate one guarded Telethon module.
 ---
 
 # Telethon Userbot
@@ -62,6 +62,9 @@ For gateway lifecycle, the bounded event inbox, webhook HMAC, or the optional cu
 
 Read `references/session-bootstrap.md` for bootstrap, login, import, repair, or authorization checks.
 
+- For a fresh installation, follow `INSTALL.ru.md` for Russian or `INSTALL.md` for English. Lead the owner one step at a time; do not merely tell them to “get Telegram credentials.”
+- If the owner has no API ID/API hash, direct them to [my.telegram.org/apps](https://my.telegram.org/apps), explain the `API development tools` flow and distinguish these application credentials from a BotFather bot token.
+- Perform repository, skill, runtime, dependency, and offline setup steps when authorized. Pause only for the owner-only browser and terminal steps, say exactly what the owner should do next, and continue after they confirm completion.
 - Only trusted local `./run.sh --account <name>` may start interactive login.
 - The owner enters Telegram code and 2FA directly in that terminal.
 - Never ask for, read, type, copy, upload, or commit codes, passwords, API hash, phone number, account env, or `.session` files.

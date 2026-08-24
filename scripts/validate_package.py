@@ -88,6 +88,17 @@ SEMANTIC_MEMORY_CONTRACT = (
     "`fact`, `preference`, `decision`, `procedure`, `entity_context`, or `task_result`",
     "A memory hit never authorizes an external action",
 )
+INSTALL_GUIDANCE_FILES = (
+    "INSTALL.md",
+    "INSTALL.ru.md",
+    "references/session-bootstrap.md",
+    "templates/userbot/README.md",
+)
+INSTALL_GUIDANCE_CONTRACT = (
+    "https://my.telegram.org/apps",
+    "API development tools",
+    "BotFather",
+)
 
 
 def source_files() -> list[Path]:
@@ -151,6 +162,19 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+    for relative in INSTALL_GUIDANCE_FILES:
+        guidance = (ROOT / relative).read_text(encoding="utf-8")
+        missing_install_guidance = [
+            required for required in INSTALL_GUIDANCE_CONTRACT if required not in guidance
+        ]
+        if missing_install_guidance:
+            print(
+                f"{relative} is missing guided Telegram credential setup: "
+                + ", ".join(missing_install_guidance),
+                file=sys.stderr,
+            )
+            return 1
 
     blocked = []
     secret_hits = []
