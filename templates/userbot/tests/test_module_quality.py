@@ -28,9 +28,51 @@ from telethon import TelegramClient
 
 def register(client):
     return None
+
+client = TelegramClient("session", 1, "hash")
 """
         errors = analyze_source(source)
         self.assertTrue(any("load_settings" in error for error in errors))
+
+    def test_type_annotation_alone_does_not_look_like_a_new_client(self) -> None:
+        source = """
+from telethon import TelegramClient
+
+def register(client: TelegramClient):
+    return None
+"""
+        self.assertEqual(analyze_source(source), [])
+
+    def test_register_must_accept_exactly_one_client(self) -> None:
+        source = """
+def register(client, settings):
+    return None
+"""
+        self.assertTrue(any("exactly one" in error for error in analyze_source(source)))
+
+    def test_telegram_write_requires_execute_gate(self) -> None:
+        source = """
+def register(client):
+    return None
+
+async def run(client):
+    await client.send_message("chat", "hello")
+"""
+        self.assertTrue(any("guarded --execute" in error for error in analyze_source(source)))
+
+    def test_execute_must_be_argparse_store_true(self) -> None:
+        source = '''
+def register(client):
+    return None
+
+async def run(client):
+    await client.send_message("chat", "hello")
+
+def parser():
+    parser.add_argument("--execute")
+    dry_run = True
+'''
+        self.assertTrue(any("argparse store_true" in error for error in analyze_source(source)))
 
     def test_guarded_direct_helper_passes_static_contract(self) -> None:
         source = '''

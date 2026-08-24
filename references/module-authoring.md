@@ -5,7 +5,7 @@ This guide is written so a smaller coding model can implement one Telethon userb
 ## Before touching code
 
 1. Read the project’s `AGENTS.md`, `MODULES.md`, `core/config.py`, and the closest existing module/test.
-2. Run the local module registry. Use an existing gateway route or module if it matches.
+2. Run the local module registry with `--json`. Use `status=match`; clarify `ambiguous`; treat `no_match` candidates as advisory only.
 3. Query the installed API inventory for the exact request/method signature.
 4. Read the official URL returned by inventory.
 
@@ -100,29 +100,26 @@ At minimum prove:
 
 ## Definition of done
 
+Before the gate, add the module to `scripts/userbot_module_registry.py` and document it in `MODULES.md`. The gate rejects an inert direct CLI module that is not registered.
+
 ```bash
 cd "$USERBOT_ROOT"
+venv/bin/python scripts/userbot_module_registry.py --validate-catalog --json
 venv/bin/python scripts/check_module.py modules/<name>.py --full
-venv/bin/python -m compileall -q . -x '/(venv|\.git|__pycache__)'
-venv/bin/python -m unittest discover -s tests -v
-venv/bin/python -m pip check
-for f in modules/*.py; do venv/bin/python "$f" --help >/dev/null; done
 ```
 
-Then update the local module registry and `MODULES.md`. The registry command for
-a direct helper must use `scripts/userbotrun.py` so session locking and timeout
-cleanup remain active.
+`check_module.py --full` performs AST safety checks, catalog validation, focused tests, all module `--help` checks, the full suite, and `pip check`. It performs no real Telegram write.
 
 ## Prompt for a smaller coding model
 
 ```text
 Implement exactly one guarded Telethon userbot module.
 
-1. Run the local module registry first. If it returns a module, use it rather than writing code.
+1. Run the local registry first. Use only status=match; clarify ambiguous; author only after no_match is confirmed.
 2. Read AGENTS.md, MODULES.md, core/config.py, the closest module/test, and this guide.
 3. Inspect the exact installed Telethon API using telethon_api_inventory.py and open its official URL.
 4. Use central config and existing authorized sessions; never client.start() or hard-code credentials.
 5. Default to dry-run. Telegram writes need --execute after a precise target/ID plan.
 6. Handle FloodWait once, re-read actual final state, add fake-client tests, update MODULES.md and registry.
-7. Run compileall, unittest, pip check and all module --help commands. Do not use a real Telegram write during verification.
+7. Run the registry validator and check_module.py --full. Do not use a real Telegram write during verification.
 ```

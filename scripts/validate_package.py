@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import py_compile
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -63,6 +64,7 @@ SECRET_PATTERNS = (
     re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"(?i)(?:api_hash|bot_token|password|phone_number)\s*=\s*[\"'][^\"']{12,}[\"']"),
 )
+PRIVATE_HOME_PATTERN = re.compile(r"(?:/Users|/home)/[^/\s`\"']+")
 LEGACY_RUNTIME_PATTERN = re.compile(rf"\b{''.join(('h', 'ermes'))}\b", re.IGNORECASE)
 AI_CREDIT_FILES = {"README.md", "README.ru.md"}
 AI_CREDIT_PHRASE = f"{''.join(('Her', 'mes'))} Agent"
@@ -156,6 +158,8 @@ def main() -> int:
     for path in ROOT.rglob("*"):
         if ".git" in path.parts:
             continue
+        if "__pycache__" in path.parts:
+            continue
         if path.name in FORBIDDEN_NAMES or path.suffix in FORBIDDEN_SUFFIXES:
             blocked.append(str(path.relative_to(ROOT)))
         if not path.is_file() or path.suffix not in TEXT_SUFFIXES:
@@ -166,6 +170,8 @@ def main() -> int:
             secret_hits.append(str(path.relative_to(ROOT)))
             continue
         if any(pattern.search(text) for pattern in SECRET_PATTERNS):
+            secret_hits.append(str(path.relative_to(ROOT)))
+        if PRIVATE_HOME_PATTERN.search(text):
             secret_hits.append(str(path.relative_to(ROOT)))
         legacy_scan_text = text
         if str(path.relative_to(ROOT)) in AI_CREDIT_FILES:
@@ -185,6 +191,21 @@ def main() -> int:
     template_modules = list((TEMPLATE / "modules").glob("*.py"))
     if len(template_modules) < 20:
         print("Template module catalog is unexpectedly incomplete", file=sys.stderr)
+        return 1
+
+    registry = TEMPLATE / "scripts" / "userbot_module_registry.py"
+    catalog = subprocess.run(
+        [sys.executable, str(registry), "--validate-catalog", "--json"],
+        cwd=TEMPLATE,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if catalog.returncode != 0:
+        print(
+            "Invalid userbot module registry: " + (catalog.stdout or catalog.stderr).strip(),
+            file=sys.stderr,
+        )
         return 1
 
     with tempfile.TemporaryDirectory(prefix="userbot_skill_validate_") as tmp:

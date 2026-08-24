@@ -220,8 +220,13 @@ async def _collect_messages(
     }
     if missing_reply_ids:
         # Resolve only author metadata for outside-window reply targets.
-        for offset in range(0, len(missing_reply_ids), 100):
-            ids = list(missing_reply_ids)[offset : offset + 100]
+        reply_records: dict[int, list[dict[str, Any]]] = {}
+        for record in records:
+            if record["reply_to"] and record["reply_to"]["id"] in missing_reply_ids:
+                reply_records.setdefault(record["reply_to"]["id"], []).append(record)
+        ordered_reply_ids = sorted(missing_reply_ids)
+        for offset in range(0, len(ordered_reply_ids), 100):
+            ids = ordered_reply_ids[offset : offset + 100]
             for reply in await client.get_messages(entity, ids=ids):
                 if not reply:
                     continue
@@ -229,14 +234,14 @@ async def _collect_messages(
                 reply_sender_id = getattr(reply, "sender_id", None) or getattr(reply_sender, "id", None)
                 if reply_sender_id not in author_aliases:
                     author_aliases[reply_sender_id] = f"A{len(author_aliases) + 1}"
-                for record in records:
-                    if record["reply_to"] and record["reply_to"]["id"] == reply.id:
-                        record["reply_to"]["author"] = {
-                            "alias": author_aliases[reply_sender_id],
-                            "id": reply_sender_id,
-                            "name": _safe_name(reply_sender, reply_sender_id),
-                            "username": getattr(reply_sender, "username", None),
-                        }
+                author = {
+                    "alias": author_aliases[reply_sender_id],
+                    "id": reply_sender_id,
+                    "name": _safe_name(reply_sender, reply_sender_id),
+                    "username": getattr(reply_sender, "username", None),
+                }
+                for record in reply_records.get(reply.id, []):
+                    record["reply_to"]["author"] = author
 
     for record in records:
         target = by_id.get(record["reply_to"]["id"]) if record["reply_to"] else None
@@ -505,6 +510,11 @@ def _compact_lines(records: list[dict[str, Any]]) -> tuple[str, list[dict[str, A
         username = f" @{author['username']}" if author.get("username") else ""
         legend.append(f"{author['alias']} = {author['name']}{username} (id {author['id']}){marker}")
 
+    reply_target_ids = {
+        record["reply_to"]["id"]
+        for record in records
+        if record.get("reply_to")
+    }
     lines = legend + ["", "Сообщения (хронологически; ↳ означает reply):"]
     for record in records:
         text = record["text"]
@@ -514,7 +524,7 @@ def _compact_lines(records: list[dict[str, Any]]) -> tuple[str, list[dict[str, A
             text = f"[{record['kind']}] {text}"
         elif not text:
             # Empty non-audio media is omitted unless it is a reply target.
-            if not any(r.get("reply_to", {}).get("id") == record["id"] for r in records if r.get("reply_to")):
+            if record["id"] not in reply_target_ids:
                 continue
             text = f"⟦{record['kind']} без подписи⟧"
 

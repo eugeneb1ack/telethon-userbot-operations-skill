@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import stat
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from core import event_store as event_store_module
 from core.event_store import EventStore, event_id
 from core import gateway as gateway_module
 from core.gateway import GatewayOptions, UserbotGateway, validate_webhook_url, webhook_signature
@@ -30,6 +32,21 @@ from scripts.userbotrun import bounded_timeout, module_command, resolve_module, 
 
 
 class EventStoreTests(unittest.TestCase):
+    @staticmethod
+    def payload(message_id: int, *, webhook_status: str = "disabled") -> dict[str, object]:
+        return {
+            "account": "main",
+            "kind": "mention",
+            "chat_id": -10042,
+            "message_id": message_id,
+            "sender_id": 9,
+            "chat_title": "Team",
+            "sender_name": "Alice",
+            "preview": "hello",
+            "occurred_at": f"2026-08-15T10:00:{message_id:02d}+00:00",
+            "webhook_status": webhook_status,
+        }
+
     def test_event_id_and_insert_are_deterministic_and_deduplicated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = EventStore(Path(tmp) / "events.sqlite3")
@@ -52,6 +69,67 @@ class EventStoreTests(unittest.TestCase):
             self.assertEqual(first["id"], event_id("main", -10042, 7, "mention"))
             self.assertEqual(len(store.list_events(limit=20)), 1)
             self.assertEqual(store.acknowledge(first["id"])["status"], "acknowledged")
+            store.close()
+
+    def test_store_has_hard_event_cap_and_keeps_newest_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            event_store_module, "MAX_EVENTS", 3
+        ):
+            store = EventStore(Path(tmp) / "events.sqlite3")
+            for message_id in range(1, 6):
+                store.add_event(self.payload(message_id))
+            records = store.list_events(limit=20)
+            self.assertEqual([record["message_id"] for record in records], [5, 4, 3])
+            store.close()
+
+    def test_acknowledged_history_has_a_separate_cap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            event_store_module, "MAX_ACKNOWLEDGED_EVENTS", 1
+        ):
+            store = EventStore(Path(tmp) / "events.sqlite3")
+            identifiers = []
+            for message_id in range(1, 4):
+                _, record = store.add_event(self.payload(message_id))
+                identifiers.append(record["id"])
+            store.acknowledge(identifiers[0])
+            store.acknowledge(identifiers[1])
+            records = store.list_events(limit=20)
+            self.assertEqual([record["message_id"] for record in records], [3, 2])
+            store.close()
+
+    def test_database_and_wal_sidecars_are_owner_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            database = Path(tmp) / "events.sqlite3"
+            store = EventStore(database)
+            store.add_event(self.payload(1))
+            for candidate in (database, Path(f"{database}-wal"), Path(f"{database}-shm")):
+                if candidate.exists():
+                    self.assertEqual(stat.S_IMODE(candidate.stat().st_mode), 0o600)
+            store.close()
+
+    def test_webhook_failure_becomes_terminal_after_bounded_attempts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            event_store_module, "MAX_WEBHOOK_ATTEMPTS", 2
+        ):
+            store = EventStore(Path(tmp) / "events.sqlite3")
+            _, record = store.add_event(self.payload(1, webhook_status="pending"))
+            self.assertFalse(
+                store.mark_webhook_failed(
+                    record["id"],
+                    error="HTTP 503",
+                    next_attempt_at="2026-08-15T10:00:01+00:00",
+                )
+            )
+            self.assertTrue(
+                store.mark_webhook_failed(
+                    record["id"],
+                    error="HTTP 503",
+                    next_attempt_at="2026-08-15T10:00:02+00:00",
+                )
+            )
+            self.assertEqual(store.webhook_attempts(record["id"]), 2)
+            self.assertEqual(store.get_event(record["id"])["webhook_status"], "failed")
+            self.assertIsNone(store.next_webhook_event())
             store.close()
 
 

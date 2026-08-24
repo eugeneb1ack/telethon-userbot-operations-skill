@@ -43,6 +43,19 @@ venv/bin/python scripts/userbotd.py --account main stop
 только для явно запрошенного непрерывного мониторинга в текущей login-сессии;
 в `~/Library/LaunchAgents` он ничего не пишет.
 
+Event inbox ограничен 10 000 строками и 2 000 подтверждёнными событиями; webhook перестаёт повторять одну доставку после 12 ошибок. SQLite-файл и его WAL/SHM имеют права только владельца.
+
+## Ограниченная локальная память
+
+Перед повторной дорогой задачей агент может искать короткий проверенный результат локально:
+
+```bash
+venv/bin/python scripts/userbot_memory.py --account main recall \
+  --query '<что нужно вспомнить>' --scope '<узкий scope>'
+```
+
+Сохраняются только компактные `fact`, `preference`, `decision`, `procedure`, `entity_context` и `task_result`. Сырые сообщения, транскрипты, медиа, session/credentials и спекулятивные профили не сохраняются. Общая память ограничена 16 КиБ на запись, 128 записями на scope и 1 024 на аккаунт; устаревшие и LRU-записи вытесняются. Любой изменяемый факт перепроверяется, а результат из памяти не разрешает Telegram write.
+
 ## Режимы конфигурации
 
 ### 1) Рекомендуемая схема: shared + account profiles
@@ -108,11 +121,14 @@ python3 scripts/setup_account.py --account second
 
 `modules/summarize.py` сохранён только для legacy-совместимости: он использует Google/ffmpeg/OpenRouter. Для новых сводок используй `summarize_chat_native.py`, который работает через native Telegram STT и сохраняет данные внутри `runtime/<account>/data/`.
 
+После первого саммари модуль хранит в SQLite только структурированную сводку, участников, cursor и до 128 fingerprints последних сообщений — без сырого текста и транскриптов. Точный повтор того же account/chat/window обычно требует только bounded tail-check и возвращает `cache_hit`; новые сообщения обрабатываются как `delta`, а изменение проверяемого хвоста вызывает `refresh`. Разовый запрос другого периода, например месяца после годового диапазона, сканирует только этот месяц и затем получает собственный cache. Лимиты: 64 КиБ на сводку, 24 периода на чат и 512 всего.
+
 ## Офлайн-проверка после изменений
 
 ```bash
 venv/bin/python -m compileall -q . -x '/(venv|\.git|__pycache__)/'
 venv/bin/python -m unittest discover -s tests -v
+venv/bin/python scripts/userbot_module_registry.py --validate-catalog --json
 for f in modules/*.py; do venv/bin/python "$f" --help >/dev/null; done
 ```
 
@@ -123,8 +139,10 @@ Read-only gateway-команды выполняются сразу. Команд
 Для естественного запроса сначала можно спросить local router — он не подключается к Telegram и подсказывает конкретный модуль:
 
 ```bash
-venv/bin/python scripts/userbot_module_registry.py --query 'дай список участников чата Цыгане'
+venv/bin/python scripts/userbot_module_registry.py --query 'дай список участников чата Example' --json
 ```
+
+Используй команду только при `status=match`. `ambiguous` требует уточнения, а `no_match` не выбирает слабого кандидата и запускает контракт добавления одного модуля.
 
 ```bash
 # Проверить профиль или подготовить смену bio/custom-emoji status
@@ -135,8 +153,8 @@ venv/bin/python scripts/userbotrun.py --account main modules/profile_settings.py
 venv/bin/python scripts/userbotrun.py --account main modules/message_edit.py --chat @example --message-id 42 --text 'Новый текст'
 
 # Forward только заранее перечисленных message ID
-venv/bin/python modules/forward_messages.py \
-  --account main --source-chat @source --destination-chat @destination --message-ids 42,41
+venv/bin/python scripts/userbotrun.py --account main modules/forward_messages.py \
+  --source-chat @source --destination-chat @destination --message-ids 42,41
 
 # Посмотреть текущие права участника группы
 venv/bin/python scripts/userbotrun.py --account main modules/group_member.py --group @group --user @member
@@ -144,8 +162,8 @@ venv/bin/python scripts/userbotrun.py --account main modules/group_member.py --g
 # Поиск по истории: компактные previews, без полного дампа чата
 venv/bin/python scripts/userbotrun.py --account main modules/search_messages.py --chat @group --query 'важно' --limit 50
 
-# Список участников группы; у «Цыган» это теперь постоянный read-only маршрут
-venv/bin/python scripts/userbotrun.py --account main modules/list_group_members.py --chat 'Цыгане'
+# Список участников группы через постоянный read-only маршрут
+venv/bin/python scripts/userbotrun.py --account main modules/list_group_members.py --chat 'Example Group'
 
 # Preview скачивания одного вложения. --execute сохранит его только в runtime data.
 venv/bin/python scripts/userbotrun.py --account main modules/download_media.py --chat @group --message-ids 42
@@ -156,13 +174,9 @@ venv/bin/python scripts/userbotrun.py --account main modules/pin_message.py --ch
 
 Полный контракт для добавления следующего модуля, включая команду для младшей модели: `docs/TELETHON_MODULE_AUTHORING.md`.
 
-## Текущая рекомендуемая миграция
+## Рекомендуемый запуск
 
-- Основной аккаунт уже перенесён в `accounts/main.env`
-- Общие ключи уже вынесены в `accounts/_shared.env`
-- Корневой `.env` оставлен только как legacy fallback-заглушка
-
-Рекомендуемый запуск основного аккаунта теперь такой:
+После локальной настройки `accounts/main.env` запускай основной профиль явно:
 ```bash
 ./run.sh --account main
 ```

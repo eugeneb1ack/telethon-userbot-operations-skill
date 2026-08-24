@@ -76,12 +76,12 @@ The extension is performed by the connected coding agent using the contract and 
 
 When a request has no suitable route, the agent must:
 
-1. Query the local registry and reuse an existing gateway route or module whenever one fits.
+1. Query the local registry. Use only a high-confidence `match`, clarify `ambiguous`, and treat `no_match` candidates as advisory rather than silently launching the nearest module.
 2. Inspect the exact installed Telethon requests, types, and known RPC errors with the bundled offline API inventory, then follow the official documentation it returns.
 3. Read the module-authoring contract and implement one focused operation under `modules/` instead of creating a general-purpose request runner.
 4. Preserve the safety model: validate inputs, refuse interactive login, make writes dry-run by default, bound timeouts and retries, and verify the final Telegram state after execution.
 5. Register the operation in the local router, document it in `MODULES.md`, and add fake-client regression tests.
-6. Run `scripts/check_module.py modules/<name>.py --full`. Only a module that passes the complete gate is ready to use.
+6. Validate registry consistency and run `scripts/check_module.py modules/<name>.py --full`. The gate checks AST safety, registry membership, CLI help, focused tests, the full suite, and dependencies.
 
 This changes source code in the local userbot runtime in response to a concrete request. It does not modify the Telegram session, commit or push code, publish a release, or broaden the operation beyond the request automatically. Capabilities excluded by the security policy remain excluded even if Telethon technically exposes them.
 
@@ -95,7 +95,7 @@ The installed registry is the source of truth. The current template includes gua
 - **Memory and reuse:** recall compact verified preferences, decisions, procedures, facts, entity context, and historical task results before repeating expensive work; revision-update useful results after verification.
 - **Account and identity:** inspect or update supported profile fields and custom-emoji status.
 - **Groups and reactions:** inspect or change one member's permissions, mention members, react to messages, and remove your own messages through guarded batch plans.
-- **Events and integrations:** collect direct-message, mention, and reply events in a local SQLite inbox; optionally deliver compact HMAC-signed webhooks.
+- **Events and integrations:** collect direct-message, mention, and reply events in a bounded local SQLite inbox; optionally deliver compact HMAC-signed webhooks with finite retry.
 - **Extension:** inspect the installed Telethon API and add one focused, tested module when no route exists.
 
 This is not an unrestricted raw Telegram API console. Authentication changes, password or recovery flows, passkeys, phone-number changes, account deletion, payments, gifts, Stars, refunds, SMS jobs, and secret-chat internals are intentionally outside the generic extension path.
@@ -111,6 +111,12 @@ Before repeated work, the agent searches this memory with a compact query. By de
 - historical task results prove only what was verified at that time and never replace a current-state check.
 
 The general store is capped at 16 KiB per item, 128 items per scope, and 1,024 items per account. Stable keys deduplicate repeated writes, optimistic revisions prevent stale overwrite, expired entries are removed, and least-recently-used entries are pruned. A memory hit never skips target resolution, a Telegram dry-run, explicit approval, or final read-back. See [the semantic-memory contract](references/semantic-memory.md) for the schema and CLI.
+
+## Incremental dialog-summary memory
+
+An owner-requested dialog summary stores a compact structured result, participant index, source cursors, and at most 128 recent message fingerprints in the same account-local SQLite database. It does not store raw messages or transcripts in summary tables. Repeating the exact account/chat/window performs a bounded tail validation: unchanged scopes return `cache_hit`, appended messages use `delta`, and a changed validation tail forces `refresh`.
+
+Scopes are exact. Repeating a year range can reuse the annual summary; the first later request for one month scans only that month and saves it as its own reusable scope instead of pretending the coarse annual answer is complete monthly evidence. Summary documents are capped at 64 KiB, with 24 scopes per chat and 512 globally. The event inbox is separately capped at 10,000 rows, retains at most 2,000 acknowledged events, and stops webhook retries after 12 failures. See [the summary-memory contract](references/summary-memory.md) and [gateway/event contract](references/gateway-webhooks.md).
 
 ## Safety model
 

@@ -1,6 +1,6 @@
 # Как добавлять модули Telethon Userbot
 
-Этот документ — инструкция для модели, которая реализует новую функцию в `/Users/johndoe/Documents/telethon-userbot`.
+Этот документ — инструкция для модели, которая реализует новую функцию в текущем `$USERBOT_ROOT`.
 
 Цель: добавить **одну маленькую, проверяемую операцию** в persistent gateway или отдельный модуль, а не абстрактную обёртку над всем Telegram API.
 
@@ -30,8 +30,8 @@
 Используем Telethon, реально установленный в проекте. Его версия и сигнатуры — источник истины.
 
 ```bash
-cd /Users/johndoe/Documents/telethon-userbot
-PY=venv/bin/python
+cd "${USERBOT_ROOT:?set USERBOT_ROOT to the userbot project}"
+PY="${USERBOT_PY:-venv/bin/python}"
 SKILL=${USERBOT_SKILL_DIR:?set USERBOT_SKILL_DIR to the installed userbot skill}
 
 # Точная сигнатура raw-запроса + официальная TL-ссылка
@@ -54,8 +54,8 @@ $PY "$SKILL/scripts/telethon_api_inventory.py" \
 Частые read-only операции должны использовать `scripts/userbotctl.py`: он переиспользует или сам запускает короткоживущий gateway. Новый direct helper нужен только когда gateway/registry ещё не покрывают запрос. Его команда в registry обязана идти через `scripts/userbotrun.py`, а не напрямую: runner сериализует доступ к session и завершает зависший subprocess.
 
 ```bash
-cd /Users/johndoe/Documents/telethon-userbot
-find modules -maxdepth 1 -name '*.py' -print | sort
+cd "${USERBOT_ROOT:?set USERBOT_ROOT to the userbot project}"
+"$PY" scripts/userbot_module_registry.py --query '<запрос пользователя>' --json
 ```
 
 - Если похожий модуль уже есть — исправь/расширь его минимально.
@@ -233,29 +233,20 @@ Fake clients are good. Do **not** write real Telegram data to test a module.
 
 ## 8. Definition of done
 
-Run all four commands from the project root:
+До gate добавь модуль в registry и `MODULES.md`. Для direct CLI команда в registry обязана использовать `scripts/userbotrun.py`.
 
 ```bash
+venv/bin/python scripts/userbot_module_registry.py --validate-catalog --json
 venv/bin/python scripts/check_module.py modules/<name>.py --full
-venv/bin/python -m compileall -q . -x '/(venv|\.git|__pycache__)/'
-venv/bin/python -m unittest discover -s tests -v
-venv/bin/python -m pip check
-for f in modules/*.py; do venv/bin/python "$f" --help >/dev/null; done
 ```
 
-Then update:
-
-- `MODULES.md` — what the user can run;
-- `scripts/userbot_module_registry.py` — direct command uses `scripts/userbotrun.py`;
-- the installed canonical `userbot` skill — if a reusable API workflow, gotcha, or verification rule was discovered.
-
-If any of the four commands fails, the module is **not done**. Fix it before reporting success.
+`check_module.py --full` проверяет AST-контракт, регистрацию, CLI help, focused tests, полный suite и `pip check` без реальной записи в Telegram. Если gate падает, модуль не готов.
 
 ## Copy-paste task prompt for a weaker model
 
 ```text
 Implement exactly one new guarded Telethon userbot module in
-/Users/johndoe/Documents/telethon-userbot/modules/<name>.py.
+$USERBOT_ROOT/modules/<name>.py.
 
 First inspect current project modules and query the installed Telethon API with:
 PY=venv/bin/python
@@ -266,6 +257,6 @@ Follow docs/TELETHON_MODULE_AUTHORING.md exactly.
 Use core.config and core.telegram_targets; never hard-code credentials or call client.start().
 Default must be dry-run. Telegram writes only with --execute after an exact target/ID plan.
 Handle FloodWait once, read back final server state, return JSON, add fake-client tests, update MODULES.md,
-and run compileall + unittest + pip check + every module --help.
+and run the registry validator plus check_module.py --full.
 Do not make Telegram network writes during verification.
 ```

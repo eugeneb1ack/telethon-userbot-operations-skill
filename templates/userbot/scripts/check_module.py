@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import os
 import py_compile
 import re
 import subprocess
@@ -15,6 +16,98 @@ from pathlib import Path
 
 
 NAME_RE = re.compile(r"[a-z][a-z0-9_]*\.py\Z")
+TELEGRAM_WRITE_METHODS = {
+    "delete_messages",
+    "edit_admin",
+    "edit_message",
+    "edit_permissions",
+    "forward_messages",
+    "kick_participant",
+    "pin_message",
+    "send_file",
+    "send_message",
+    "unpin_message",
+}
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _execute_flag_is_guarded(tree: ast.AST) -> bool:
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or _call_name(node) != "add_argument":
+            continue
+        flags = {
+            argument.value
+            for argument in node.args
+            if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+        }
+        if "--execute" not in flags:
+            continue
+        return any(
+            keyword.arg == "action"
+            and isinstance(keyword.value, ast.Constant)
+            and keyword.value.value == "store_true"
+            for keyword in node.keywords
+        )
+    return False
+
+
+def _register_function(tree: ast.Module) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    return next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "register"
+        ),
+        None,
+    )
+
+
+def _register_is_inert(tree: ast.Module) -> bool:
+    function = _register_function(tree)
+    if function is None:
+        return False
+    meaningful = [
+        statement
+        for statement in function.body
+        if not (
+            isinstance(statement, ast.Pass)
+            or (
+                isinstance(statement, ast.Return)
+                and (
+                    statement.value is None
+                    or isinstance(statement.value, ast.Constant)
+                    and statement.value.value is None
+                )
+            )
+            or (
+                isinstance(statement, ast.Expr)
+                and isinstance(statement.value, ast.Constant)
+                and isinstance(statement.value.value, str)
+            )
+        )
+    ]
+    return not meaningful
+
+
+def _registered_modules(registry_path: Path) -> set[str]:
+    tree = ast.parse(registry_path.read_text(encoding="utf-8"))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or _call_name(node) != "Operation":
+            continue
+        if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+            value = node.args[1].value
+            if isinstance(value, str) and "/" not in value:
+                modules.add(value)
+    return modules
 
 
 def analyze_source(source: str) -> list[str]:
@@ -24,11 +117,15 @@ def analyze_source(source: str) -> list[str]:
     except SyntaxError as exc:
         return [f"syntax error: {exc.msg} at line {exc.lineno}"]
 
-    functions = {
-        node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
-    if "register" not in functions:
+    register = _register_function(tree)
+    if register is None:
         errors.append("missing register(client)")
+    elif (
+        len(register.args.posonlyargs) + len(register.args.args) != 1
+        or register.args.vararg is not None
+        or register.args.kwarg is not None
+    ):
+        errors.append("register must accept exactly one client argument")
 
     forbidden_start = [
         node.lineno
@@ -43,7 +140,11 @@ def analyze_source(source: str) -> list[str]:
             f"(line {forbidden_start[0]})"
         )
 
-    if "TelegramClient" in source:
+    constructs_client = any(
+        isinstance(node, ast.Call) and _call_name(node) == "TelegramClient"
+        for node in ast.walk(tree)
+    )
+    if constructs_client:
         required = (
             "load_settings",
             "apply_runtime_env",
@@ -54,11 +155,22 @@ def analyze_source(source: str) -> list[str]:
         if missing:
             errors.append("direct helper is missing: " + ", ".join(missing))
 
-    if "--execute" in source:
-        if "action=\"store_true\"" not in source and "action='store_true'" not in source:
-            errors.append("--execute must be a boolean store_true flag")
+    write_lines = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and _call_name(node) in TELEGRAM_WRITE_METHODS
+    ]
+    has_execute = "--execute" in source
+    if has_execute:
+        if not _execute_flag_is_guarded(tree):
+            errors.append("--execute must be an argparse store_true flag")
         if "dry_run" not in source:
             errors.append("Telegram write CLI must return an explicit dry_run plan")
+    if write_lines and not has_execute:
+        errors.append(
+            "Telegram write calls require a guarded --execute CLI "
+            f"(first write at line {write_lines[0]})"
+        )
 
     top_level_await = [
         node.lineno
@@ -86,6 +198,8 @@ def analyze_source(source: str) -> list[str]:
 
 
 def run_check(command: list[str], *, cwd: Path, timeout: int) -> dict[str, object]:
+    environment = os.environ.copy()
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -94,6 +208,7 @@ def run_check(command: list[str], *, cwd: Path, timeout: int) -> dict[str, objec
         stderr=subprocess.STDOUT,
         timeout=timeout,
         check=False,
+        env=environment,
     )
     return {
         "command": command,
@@ -113,6 +228,14 @@ def validate_module(project_root: Path, module: Path, *, full: bool) -> dict[str
         raise ValueError(f"module not found: {path}")
 
     source_errors = analyze_source(path.read_text(encoding="utf-8"))
+    tree = ast.parse(path.read_text(encoding="utf-8")) if not source_errors else None
+    registry_path = root / "scripts" / "userbot_module_registry.py"
+    if tree is not None and _register_is_inert(tree):
+        registered = _registered_modules(registry_path) if registry_path.is_file() else set()
+        if path.name not in registered:
+            source_errors.append(
+                f"direct CLI module is missing from registry: {path.name}"
+            )
     test_path = root / "tests" / f"test_{path.stem}.py"
     if not test_path.is_file():
         source_errors.append(f"missing focused test: tests/{test_path.name}")
@@ -129,6 +252,13 @@ def validate_module(project_root: Path, module: Path, *, full: bool) -> dict[str
 
     checks: list[dict[str, object]] = []
     if not source_errors:
+        checks.append(
+            run_check(
+                [sys.executable, str(registry_path), "--validate-catalog", "--json"],
+                cwd=root,
+                timeout=10,
+            )
+        )
         checks.append(run_check([sys.executable, str(path), "--help"], cwd=root, timeout=10))
         checks.append(
             run_check(

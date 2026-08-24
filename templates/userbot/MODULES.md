@@ -1,16 +1,16 @@
 # Telethon Userbot Modules
 
-Canonical project root: `/Users/johndoe/Documents/telethon-userbot`.
+Canonical project root: `$USERBOT_ROOT` (the current userbot checkout).
 
 `core/module_loader.py` imports every `modules/*.py`, but only files exposing `register(client)` attach an in-process handler. A direct CLI helper does nothing until it is invoked explicitly.
 
 For agents and natural-language requests, first run the read-only router:
 
 ```bash
-venv/bin/python scripts/userbot_module_registry.py --query '<request>'
+venv/bin/python scripts/userbot_module_registry.py --query '<request>' --json
 ```
 
-It selects an existing module and prints an exact command template; only use the canonical skill’s Telethon API inventory and playbook when it returns no match.
+Use `status=match` only. Clarify `ambiguous`; on `no_match`, inspect candidates and author a guarded module only if none fits. Validate catalog/file/runner consistency with `--validate-catalog --json`.
 
 ## Local semantic memory
 
@@ -29,7 +29,7 @@ Recall is advisory: temporal facts and historical task results require live reva
 
 ## Persistent gateway
 
-`main.py` starts `core/gateway.py` before ordinary modules. It owns the authorized client, stores incoming direct-message/mention/reply events in `runtime/<account>/events.sqlite3`, exposes `runtime/<account>/userbot.sock`, and optionally delivers HMAC-signed webhooks.
+`main.py` starts `core/gateway.py` before ordinary modules. It owns the authorized client, stores incoming direct-message/mention/reply events in `runtime/<account>/events.sqlite3`, exposes `runtime/<account>/userbot.sock`, and optionally delivers HMAC-signed webhooks. The inbox is capped at 10,000 events, retains at most 2,000 acknowledged events, stops a webhook after 12 failed attempts, and secures the database/WAL/SHM as owner-only files.
 
 Use `scripts/userbotctl.py` for gateway-backed reads:
 
@@ -70,6 +70,9 @@ Do not invoke a direct helper bare while any gateway owns the session.
 | `summarize_chat_native.py` | Moscow-time bounded chat collection, queued native STT, atomic archive/progress recovery, and bounded SQLite dialog-summary tables with recent-tail validation, delta collection, and revision-checked commit. |
 | `count_user_messages.py` | Count one user’s messages for a time window; only `--send` publishes its report. |
 | `comment_channels.py` | List broadcast channels linked to accessible discussion groups where the account wrote reply/comment messages. | Read-only; message text is not returned. |
+| `owned_channels.py` | List broadcast channels created and owned by the current account. |
+| `list_forum_topics.py` | List or title-filter forum topics in one exact group/channel. |
+| `list_blocked_users.py` | Return a bounded, minimal snapshot of currently blocked users. |
 | `recent_personal_incoming.py` | List recent incoming personal-dialog senders with timestamps only; message text and media are not returned. |
 | `personal_chats.py`, `group_chats.py`, `channel_chats.py`, `bot_chats.py` | JSON/text dialog inventory CLIs. |
 | `profile_settings.py` | Inspect own profile and prepare changes to name, bio, username, or custom-emoji status. Custom emoji documents are resolved before a status change. |
@@ -81,7 +84,9 @@ Do not invoke a direct helper bare while any gateway owns the session.
 
 | Module | Write guard |
 |---|---|
-| `send_message.py` | Dry-run by default; `--execute` sends and then reads the message back. |
+| `send_message.py` | Dry-run validates the target and optional `--reply-to`; `--execute` sends and verifies text and reply parent. |
+| `send_photo.py` | Dry-run verifies one local image and target; `--execute` sends and reads the message back. |
+| `richtext.py` | Validates allowlisted Telegram HTML; `--execute` edits one owned message and verifies text/entities. |
 | `message_edit.py` | Dry-run by default; edits one of the owner’s outgoing messages only, with exact read-back. Supports inline custom emoji through `--parse-mode html`. |
 | `forward_messages.py` | Dry-run freezes source message IDs and previews both peers; `--execute` forwards those exact IDs and reads destination messages back. |
 | `create_emoji_pack.py` | Dry-run renders one exact text emoji and freezes an available short name; `--execute` creates the custom emoji pack and reads back title, count, emoji mapping, and document. |
@@ -109,8 +114,7 @@ Do not invoke a direct helper bare while any gateway owns the session.
 ## Validation
 
 ```bash
-cd /Users/johndoe/Documents/telethon-userbot
-venv/bin/python -m compileall -q . -x '/(venv|\.git|__pycache__)/'
-venv/bin/python -m unittest discover -s tests -v
-for f in modules/*.py; do venv/bin/python "$f" --help >/dev/null; done
+cd "${USERBOT_ROOT:?set USERBOT_ROOT to the userbot project}"
+venv/bin/python scripts/userbot_module_registry.py --validate-catalog --json
+venv/bin/python scripts/check_module.py modules/<changed_module>.py --full
 ```

@@ -495,14 +495,22 @@ class UserbotGateway:
                     attempts = self.store.webhook_attempts(record["id"]) + 1
                     delay = min(300, 2 ** min(attempts, 8))
                     next_attempt = datetime.now(timezone.utc) + timedelta(seconds=delay)
-                    self.store.mark_webhook_failed(
+                    terminal = self.store.mark_webhook_failed(
                         record["id"],
                         error=f"{type(exc).__name__}: {exc}",
                         next_attempt_at=next_attempt.isoformat(),
                     )
-                    logger.warning(
-                        "Webhook delivery failed for event=%s retry_in=%ss error=%s",
-                        record["id"],
-                        delay,
-                        type(exc).__name__,
-                    )
+                    if terminal:
+                        logger.error(
+                            "Webhook delivery stopped for event=%s attempts=%s error=%s",
+                            record["id"],
+                            attempts,
+                            type(exc).__name__,
+                        )
+                    else:
+                        logger.warning(
+                            "Webhook delivery failed for event=%s retry_in=%ss error=%s",
+                            record["id"],
+                            delay,
+                            type(exc).__name__,
+                        )

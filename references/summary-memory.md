@@ -13,6 +13,8 @@ Use this protocol for every owner-requested dialog summary. It keeps repeated wo
 
 Each summary document is limited to 64 KiB and 64 participants. Retention is limited to 24 scopes per chat and 512 scopes globally. SQLite removes older least-recently-validated scopes. Raw messages, media, audio, and photo bytes remain outside this database.
 
+Reuse is exact-scope by design: account, chat, topic/sender filter, and requested window are part of the key. Repeating the same annual range can hit its saved snapshot after bounded validation. Asking for one month after an annual summary does not pretend that the coarse annual text is a complete monthly answer; it scans only that month once, saves a separate scope, and reuses that scope on later repeats. This preserves accuracy while still avoiding another year-wide scan.
+
 Validation is deliberately bounded: the module checks the most recent 128 in-scope message fingerprints. It detects new messages and recent edits/deletions, but it cannot prove that an older message outside that tail was never edited. Use `--force-refresh` when exact historical revalidation matters.
 
 ## Collection states

@@ -88,6 +88,8 @@ The inbox records only new incoming:
 
 The unique key is `(account, chat_id, message_id, kind)`. SQLite deduplicates replayed updates. `USERBOT_EVENT_PREVIEW_CHARS=0` disables message text in stored/webhook events; the allowed range is 0–500 and the default is 160.
 
+The inbox is operational state, not a permanent archive. It keeps at most 10,000 events and at most 2,000 acknowledged events; oldest rows are pruned first. The database and active WAL/SHM sidecars are mode `0600`, and WAL growth is checkpointed/limited. Export anything that must be retained elsewhere before it ages out.
+
 ## Configure an outbound webhook
 
 Run the local interactive setup. The URL is visible; the HMAC secret is hidden and never printed:
@@ -154,7 +156,7 @@ expected = hmac.new(
 ).hexdigest()
 ```
 
-Reject stale timestamps and compare with `hmac.compare_digest`. Return any `2xx` only after accepting the event. Non-`2xx` responses are retried with bounded exponential backoff; the SQLite inbox preserves pending deliveries across restarts. The gateway never logs the webhook URL, secret, or payload.
+Reject stale timestamps and compare with `hmac.compare_digest`. Return any `2xx` only after accepting the event. Non-`2xx` responses are retried with bounded exponential backoff; the SQLite inbox preserves pending deliveries across restarts. After 12 failed attempts the event becomes `webhook_status=failed` and automatic delivery stops. The gateway never logs the webhook URL, secret, or payload.
 
 ## Agent integration
 
