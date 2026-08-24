@@ -90,6 +90,12 @@ The collector invokes Telegram `messages.TranscribeAudioRequest` for newly colle
 
 The STT queue is bounded and resumable. Keep one worker unless current Telegram behaviour has been verified with more. A stable output plus `--resume` preserves completed items; the progress JSONL contains status only, not transcript text. Do not run another direct helper for that account while collection is active.
 
+## Live dialog freshness requests
+
+For “последнее”, “ещё одно”, “следующее”, “сейчас”, “после моего сообщения” and equivalent freshness-sensitive requests, do not select targets from dialog-summary memory or an earlier metadata scan. Route to `dialog_updates_native.py` with the exact sender and the semantic selector: `--latest N`, `--unseen`, `--after-message-id`, or `--after-latest-outgoing`; choose `--content all|voice|text`. The module freezes IDs, performs native STT, rechecks for later text and media, and advances a content-scoped ID-only cursor only after the result is complete and current. If `complete=false`, automatically rerun or report that the tail is still moving; never present those records as the final latest slice. Exact known-ID media requests continue to use `transcribe_audio_native.py --message-id`.
+
+Treat three states as separate: structured summary memory provides semantic context; Telegram is the live source of current messages; `dialog_delivery_cursors` records only how far a successfully completed latest/unseen operation got. A summary cache hit must never advance or replace a delivery cursor, and a delivery cursor must never be treated as a semantic summary.
+
 ## Add one missing operation
 
 Read `references/module-authoring.md` before changing code.

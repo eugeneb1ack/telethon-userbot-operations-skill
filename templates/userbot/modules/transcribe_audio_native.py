@@ -12,7 +12,7 @@ import argparse
 import asyncio
 import json
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +49,10 @@ class Result:
     text: str = ""
     pending: bool = False
     trial_remains: int | None = None
+    selection_mode: str = "exact_id"
+    freshness_status: str | None = None
+    newer_message_id: int | None = None
+    superseded_message_ids: list[int] = field(default_factory=list)
     error: str | None = None
 
 
@@ -219,14 +223,108 @@ async def transcribe_message(
         client.remove_event_handler(on_update, Raw(types.UpdateTranscribedAudio))
 
 
+async def _latest_voice_message_id(
+    client: TelegramClient,
+    entity: Any,
+    *,
+    expected_sender_id: int,
+    scan_limit: int,
+) -> int | None:
+    """Return the newest voice ID from one exact sender in a bounded live tail."""
+    if scan_limit <= 0:
+        raise ValueError("scan_limit must be positive")
+    async for message in client.iter_messages(entity, limit=scan_limit):
+        if getattr(message, "sender_id", None) != expected_sender_id:
+            continue
+        if not getattr(message, "voice", False):
+            continue
+        message_id = getattr(message, "id", None)
+        if message_id is not None:
+            return int(message_id)
+    return None
+
+
+async def transcribe_latest_voice(
+    client: TelegramClient,
+    *,
+    chat: str | int,
+    expected_sender_id: int,
+    timeout: float,
+    request_timeout: float = 30.0,
+    scan_limit: int = 200,
+    freshness_retries: int = 1,
+) -> Result:
+    """Transcribe the live latest voice and fail closed if the tail keeps moving."""
+    if freshness_retries < 0 or freshness_retries > 3:
+        raise ValueError("freshness_retries must be between 0 and 3")
+    entity = await _resolve_input_entity(client, chat)
+    selected_id = await _latest_voice_message_id(
+        client,
+        entity,
+        expected_sender_id=expected_sender_id,
+        scan_limit=scan_limit,
+    )
+    if selected_id is None:
+        raise ValueError(
+            f"no voice message from sender {expected_sender_id} was found "
+            f"in the latest {scan_limit} messages"
+        )
+
+    superseded_ids: list[int] = []
+    for attempt in range(freshness_retries + 1):
+        result = await transcribe_message(
+            client,
+            chat=chat,
+            message_id=selected_id,
+            timeout=timeout,
+            request_timeout=request_timeout,
+            expected_sender_id=expected_sender_id,
+        )
+        result.selection_mode = "latest_voice"
+        result.superseded_message_ids = list(superseded_ids)
+        if not result.complete:
+            result.freshness_status = "not_checked_incomplete_transcription"
+            return result
+
+        newest_id = await _latest_voice_message_id(
+            client,
+            entity,
+            expected_sender_id=expected_sender_id,
+            scan_limit=scan_limit,
+        )
+        if newest_id == selected_id:
+            result.freshness_status = "current"
+            return result
+
+        result.complete = False
+        result.newer_message_id = newest_id
+        if newest_id is None or newest_id < selected_id:
+            result.status = "selection_changed"
+            result.freshness_status = "selected_voice_no_longer_latest"
+            return result
+
+        if attempt >= freshness_retries:
+            result.status = "superseded"
+            result.freshness_status = "newer_voice_found"
+            return result
+
+        superseded_ids.append(selected_id)
+        selected_id = newest_id
+
+    raise AssertionError("unreachable latest-voice retry state")
+
+
 async def transcribe(
     *,
     account: str,
     chat: str | int,
-    message_id: int,
+    message_id: int | None,
     timeout: float,
     request_timeout: float = 30.0,
     expected_sender_id: int | None = None,
+    latest_voice: bool = False,
+    scan_limit: int = 200,
+    freshness_retries: int = 1,
 ) -> Result:
     settings = load_settings(account)
     apply_runtime_env(settings)
@@ -236,6 +334,20 @@ async def transcribe(
     try:
         if not await client.is_user_authorized():
             raise RuntimeError("Telegram session is not authorized; refusing interactive login")
+        if latest_voice:
+            if expected_sender_id is None:
+                raise ValueError("--sender-id is required with --latest-voice")
+            return await transcribe_latest_voice(
+                client,
+                chat=chat,
+                expected_sender_id=expected_sender_id,
+                timeout=timeout,
+                request_timeout=request_timeout,
+                scan_limit=scan_limit,
+                freshness_retries=freshness_retries,
+            )
+        if message_id is None:
+            raise ValueError("--message-id is required unless --latest-voice is used")
         return await transcribe_message(
             client,
             chat=chat,
@@ -254,7 +366,13 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--account", required=True, help="userbot account profile, e.g. main")
     parser.add_argument("--chat", required=True, help="Telegram chat id or username")
-    parser.add_argument("--message-id", required=True, type=int)
+    selection = parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--message-id", type=int)
+    selection.add_argument(
+        "--latest-voice",
+        action="store_true",
+        help="select the live latest voice from --sender-id and recheck the tail",
+    )
     parser.add_argument(
         "--sender-id",
         type=int,
@@ -271,6 +389,18 @@ def _parser() -> argparse.ArgumentParser:
         type=float,
         default=30,
         help="seconds to wait for TranscribeAudioRequest itself (default: 30)",
+    )
+    parser.add_argument(
+        "--scan-limit",
+        type=int,
+        default=200,
+        help="bounded live-tail messages inspected by --latest-voice (default: 200)",
+    )
+    parser.add_argument(
+        "--freshness-retries",
+        type=int,
+        default=1,
+        help="newer voices to follow before failing closed, from 0 to 3 (default: 1)",
     )
     parser.add_argument(
         "--json",
@@ -292,6 +422,9 @@ def main() -> int:
                 timeout=args.timeout,
                 request_timeout=args.request_timeout,
                 expected_sender_id=args.sender_id,
+                latest_voice=args.latest_voice,
+                scan_limit=args.scan_limit,
+                freshness_retries=args.freshness_retries,
             )
         )
     except Exception as exc:  # JSON is easier for the guest agent to handle than mixed logs.

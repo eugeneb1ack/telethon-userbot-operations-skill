@@ -2,6 +2,8 @@
 
 Use this protocol for every owner-requested dialog summary. It keeps repeated work local and bounded without treating an old answer as current.
 
+This cache is not a target selector for “последнее”, “ещё одно”, “следующее”, “сейчас”, or “после моего сообщения”. Those requests must use `dialog_updates_native.py` with an exact sender and a live selector. That route keeps an ID-only content cursor and rechecks the tail after native transcription. Keep semantic summary reuse, live Telegram state, and delivery cursors as three separate concerns.
+
 ## Storage contract
 
 `summarize_chat_native.py --do-summary` automatically uses `runtime/<account>/data/userbot_memory.sqlite3`. Dialog summaries and general semantic memory use separate tables in this unified account-local database. If an older `summary_memory.sqlite3` exists and no unified database exists yet, the runtime reuses the legacy file in place so existing summaries remain available. The summary tables store:

@@ -66,7 +66,8 @@ Do not invoke a direct helper bare while any gateway owns the session.
 
 | Module | Role |
 |---|---|
-| `transcribe_audio_native.py` | Native Telegram audio transcription via `messages.TranscribeAudioRequest`, with a separate request timeout and final-update timeout. |
+| `transcribe_audio_native.py` | Native Telegram audio transcription via `messages.TranscribeAudioRequest`. Exact-ID mode stays frozen; `--latest-voice --sender-id ...` performs a live sender-scoped selection, follows one newly arrived voice, and fails closed if the tail moves again. |
+| `dialog_updates_native.py` | Freshness-checked live dialog slices for text, voice, or mixed content. Supports latest-N, unseen-after-cursor, exact anchors, and latest-outgoing anchors; advances an ID-only content cursor only after complete STT and a stable tail check. |
 | `summarize_chat_native.py` | Moscow-time bounded chat collection, queued native STT, atomic archive/progress recovery, and bounded SQLite dialog-summary tables with recent-tail validation, delta collection, and revision-checked commit. |
 | `count_user_messages.py` | Count one user’s messages for a time window; only `--send` publishes its report. |
 | `comment_channels.py` | List broadcast channels linked to accessible discussion groups where the account wrote reply/comment messages. | Read-only; message text is not returned. |
