@@ -12,6 +12,21 @@ venv/bin/python scripts/userbot_module_registry.py --query '<request>'
 
 It selects an existing module and prints an exact command template; only use the canonical skill’s Telethon API inventory and playbook when it returns no match.
 
+## Local semantic memory
+
+`scripts/userbot_memory.py` recalls and revision-updates compact reusable knowledge in `runtime/<account>/data/userbot_memory.sqlite3`. It is a local CLI, not a Telethon module: it never loads account credentials, connects to Telegram, or acquires the session lock.
+
+```bash
+venv/bin/python scripts/userbot_memory.py --account main recall \
+  --query '<compact query>' --scope '<scope>'
+venv/bin/python scripts/userbot_memory.py --account main remember \
+  --kind procedure --scope operation:<slug> --subject '<subject>' \
+  --summary '<verified reusable result>' --source '<compact provenance>'
+venv/bin/python scripts/userbot_memory.py --account main stats
+```
+
+Recall is advisory: temporal facts and historical task results require live revalidation before they support a current claim or Telegram action. Memory never bypasses target resolution, dry-run, approval, or final read-back. See the installed skill's `references/semantic-memory.md` for the schema, retention, privacy, and freshness contract.
+
 ## Persistent gateway
 
 `main.py` starts `core/gateway.py` before ordinary modules. It owns the authorized client, stores incoming direct-message/mention/reply events in `runtime/<account>/events.sqlite3`, exposes `runtime/<account>/userbot.sock`, and optionally delivers HMAC-signed webhooks.
@@ -52,7 +67,7 @@ Do not invoke a direct helper bare while any gateway owns the session.
 | Module | Role |
 |---|---|
 | `transcribe_audio_native.py` | Native Telegram audio transcription via `messages.TranscribeAudioRequest`, with a separate request timeout and final-update timeout. |
-| `summarize_chat_native.py` | Moscow-time bounded chat collection, queued native STT, atomically updated archive, JSONL progress sidecar, and `--resume` recovery. |
+| `summarize_chat_native.py` | Moscow-time bounded chat collection, queued native STT, atomic archive/progress recovery, and bounded SQLite dialog-summary tables with recent-tail validation, delta collection, and revision-checked commit. |
 | `count_user_messages.py` | Count one user’s messages for a time window; only `--send` publishes its report. |
 | `comment_channels.py` | List broadcast channels linked to accessible discussion groups where the account wrote reply/comment messages. | Read-only; message text is not returned. |
 | `recent_personal_incoming.py` | List recent incoming personal-dialog senders with timestamps only; message text and media are not returned. |

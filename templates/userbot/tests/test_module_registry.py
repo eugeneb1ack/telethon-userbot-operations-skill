@@ -44,6 +44,21 @@ class UserbotModuleRegistryTests(unittest.TestCase):
         self.assertEqual(operation["module"], "comment_channels.py")
         self.assertEqual(operation["mode"], "read_only")
 
+    def test_recall_memory_request_routes_to_local_cli(self) -> None:
+        result = self.query("что мы уже знаем про процедуру деплоя")
+        self.assertTrue(result["ok"])
+        operation = result["operations"][0]
+        self.assertEqual(operation["slug"], "recall_memory")
+        self.assertEqual(operation["mode"], "local_read")
+        self.assertEqual(operation["module"], "scripts/userbot_memory.py")
+
+    def test_remember_request_routes_to_local_cli(self) -> None:
+        result = self.query("сохрани в память проверенную процедуру")
+        self.assertTrue(result["ok"])
+        operation = result["operations"][0]
+        self.assertEqual(operation["slug"], "remember_memory")
+        self.assertEqual(operation["mode"], "local_write")
+
     def test_unknown_operation_returns_nonzero_json_error(self) -> None:
         completed = subprocess.run(
             [sys.executable, str(REGISTRY), "--operation", "not_real", "--json"],

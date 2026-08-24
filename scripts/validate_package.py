@@ -21,6 +21,8 @@ REQUIRED = (
     ".gitignore",
     "assets/telegram-userbot-skill-manga.png",
     "references/operation-playbook.md",
+    "references/semantic-memory.md",
+    "references/summary-memory.md",
     "references/gateway-webhooks.md",
     "references/channel-rich-publishing.md",
     "references/module-authoring.md",
@@ -40,6 +42,7 @@ REQUIRED = (
     "templates/userbot/core/config.py",
     "templates/userbot/core/event_store.py",
     "templates/userbot/core/gateway.py",
+    "templates/userbot/core/memory_store.py",
     "templates/userbot/core/runtime_lock.py",
     "templates/userbot/scripts/setup_gateway.py",
     "templates/userbot/scripts/install_gateway_service.py",
@@ -49,6 +52,7 @@ REQUIRED = (
     "templates/userbot/scripts/userbotrun.py",
     "templates/userbot/scripts/check_module.py",
     "templates/userbot/scripts/userbot_module_registry.py",
+    "templates/userbot/scripts/userbot_memory.py",
 )
 FORBIDDEN_NAMES = {".env", "accounts", "runtime", "data", "venv", ".venv", "__pycache__"}
 FORBIDDEN_SUFFIXES = {".session", ".session-journal", ".sqlite3", ".db"}
@@ -70,6 +74,17 @@ SUMMARY_MEDIA_CONTRACT = (
     "`download_media.py`",
     "`view_image`",
     "Do not download, play, transcribe, or visually analyze video files.",
+)
+SUMMARY_MEMORY_CONTRACT = (
+    "`references/summary-memory.md`",
+    "`telegram_dialog_memory.v1`",
+    "`commit_required=true`",
+)
+SEMANTIC_MEMORY_CONTRACT = (
+    "`references/semantic-memory.md`",
+    "scripts/userbot_memory.py",
+    "`fact`, `preference`, `decision`, `procedure`, `entity_context`, or `task_result`",
+    "A memory hit never authorizes an external action",
 )
 
 
@@ -109,6 +124,28 @@ def main() -> int:
         print(
             "SKILL.md is missing the owner-summary media contract: "
             + ", ".join(missing_summary_contract),
+            file=sys.stderr,
+        )
+        return 1
+
+    missing_summary_memory_contract = [
+        required for required in SUMMARY_MEMORY_CONTRACT if required not in skill
+    ]
+    if missing_summary_memory_contract:
+        print(
+            "SKILL.md is missing the incremental summary-memory contract: "
+            + ", ".join(missing_summary_memory_contract),
+            file=sys.stderr,
+        )
+        return 1
+
+    missing_semantic_memory_contract = [
+        required for required in SEMANTIC_MEMORY_CONTRACT if required not in skill
+    ]
+    if missing_semantic_memory_contract:
+        print(
+            "SKILL.md is missing the bounded semantic-memory contract: "
+            + ", ".join(missing_semantic_memory_contract),
             file=sys.stderr,
         )
         return 1

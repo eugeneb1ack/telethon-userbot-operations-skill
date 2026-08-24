@@ -33,7 +33,9 @@ class ConfigIsolationTests(unittest.TestCase):
 
     def test_incomplete_second_profile_cannot_reuse_first_profile_hash(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            accounts = Path(tmp)
+            base = Path(tmp)
+            accounts = base / "accounts"
+            accounts.mkdir()
             (accounts / "first.env").write_text(
                 "API_ID=12345\nAPI_HASH=first-hash\nPHONE_NUMBER=+10000000000\n",
                 encoding="utf-8",
@@ -43,6 +45,7 @@ class ConfigIsolationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with (
+                patch.object(config, "BASE_DIR", base),
                 patch.object(config, "ACCOUNTS_DIR", accounts),
                 patch.object(config, "SHARED_ENV_FILE", accounts / "_shared.env"),
                 patch.dict(os.environ, {}, clear=True),

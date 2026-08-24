@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -31,12 +32,15 @@ from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from telethon.tl.custom.message import Message
 from telethon.tl.types import DocumentAttributeAudio
+from telethon.utils import get_peer_id
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.config import apply_runtime_env, load_settings
+from core.memory_store import memory_database_path
+from core.summary_store import MAX_TAIL_MARKERS, SummaryStore, scope_key
 try:
     from modules.transcribe_audio_native import Result, transcribe_message
 except ModuleNotFoundError:
@@ -44,6 +48,7 @@ except ModuleNotFoundError:
 
 LOCAL_TZ = ZoneInfo("Europe/Moscow")
 MAX_LAST_MESSAGES = 1000
+TAIL_VALIDATION_MARKERS = MAX_TAIL_MARKERS
 
 
 def register(client: Any) -> None:
@@ -147,9 +152,15 @@ async def _collect_messages(
     sender_id: int | None,
     topic_id: int | None = None,
     limit: int | None = None,
+    min_id: int | None = None,
 ) -> list[dict[str, Any]]:
     raw: list[Message] = []
-    async for message in client.iter_messages(entity, limit=limit, reply_to=topic_id):
+    iterator_options: dict[str, Any] = {"limit": limit, "reply_to": topic_id}
+    if end_utc is not None:
+        iterator_options["offset_date"] = end_utc
+    if min_id is not None:
+        iterator_options["min_id"] = min_id
+    async for message in client.iter_messages(entity, **iterator_options):
         if not message.date:
             continue
         if start_utc is not None and message.date < start_utc:
@@ -238,6 +249,71 @@ async def _collect_messages(
             }
 
     return records
+
+
+def _utc_iso(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat()
+
+
+def _message_marker(message: Message) -> dict[str, Any]:
+    document = getattr(message, "document", None)
+    photo = getattr(message, "photo", None)
+    marker_source = {
+        "id": int(message.id),
+        "sender_id": getattr(message, "sender_id", None),
+        "date": _utc_iso(getattr(message, "date", None)),
+        "edit_date": _utc_iso(getattr(message, "edit_date", None)),
+        "outgoing": bool(getattr(message, "out", False)),
+        "reply_to": getattr(message, "reply_to_msg_id", None),
+        "kind": _kind(message),
+        "text": message.message or "",
+        "document_id": getattr(document, "id", None),
+        "photo_id": getattr(photo, "id", None),
+    }
+    serialized = json.dumps(
+        marker_source, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return {
+        "id": int(message.id),
+        "fingerprint": hashlib.sha256(serialized).hexdigest()[:24],
+    }
+
+
+async def _collect_recent_markers(
+    client: TelegramClient,
+    entity: Any,
+    *,
+    start_utc: datetime | None,
+    end_utc: datetime | None,
+    sender_id: int | None,
+    topic_id: int | None,
+    limit: int = TAIL_VALIDATION_MARKERS,
+) -> list[dict[str, Any]]:
+    markers: list[dict[str, Any]] = []
+    iterator_options: dict[str, Any] = {"limit": None, "reply_to": topic_id}
+    if end_utc is not None:
+        iterator_options["offset_date"] = end_utc
+    async for message in client.iter_messages(entity, **iterator_options):
+        message_date = getattr(message, "date", None)
+        if message_date is None:
+            continue
+        if start_utc is not None and message_date < start_utc:
+            break
+        if end_utc is not None and message_date >= end_utc:
+            continue
+        if getattr(message, "action", None):
+            continue
+        if sender_id is not None and getattr(message, "sender_id", None) != sender_id:
+            continue
+        markers.append(_message_marker(message))
+        if len(markers) >= limit:
+            break
+    markers.sort(key=lambda item: item["id"])
+    return markers
 
 
 async def _transcribe_records(
@@ -452,11 +528,31 @@ def _compact_lines(records: list[dict[str, Any]]) -> tuple[str, list[dict[str, A
     return "\n".join(lines), list(authors.values())
 
 
-def _window_bounds(args: argparse.Namespace) -> tuple[datetime, datetime, str, str]:
+def _parse_local_boundary(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=LOCAL_TZ)
+    return parsed.astimezone(LOCAL_TZ)
+
+
+def _window_bounds(
+    args: argparse.Namespace, captured_end_utc: datetime
+) -> tuple[datetime, datetime, str, str]:
+    if args.since is not None:
+        start_local = _parse_local_boundary(args.since)
+        end_local = _parse_local_boundary(args.until)
+        if start_local >= end_local:
+            raise ValueError("--since must be earlier than --until")
+        return (
+            start_local.astimezone(timezone.utc),
+            end_local.astimezone(timezone.utc),
+            start_local.isoformat(),
+            end_local.isoformat(),
+        )
     if args.last_hours is not None:
         if args.last_hours <= 0:
             raise ValueError("--last-hours must be positive")
-        end_local = datetime.now(LOCAL_TZ)
+        end_local = captured_end_utc.astimezone(LOCAL_TZ)
         start_local = end_local - timedelta(hours=args.last_hours)
         return (
             start_local.astimezone(timezone.utc),
@@ -471,54 +567,323 @@ def _window_bounds(args: argparse.Namespace) -> tuple[datetime, datetime, str, s
     return start_utc, end_utc, start_local.isoformat(), end_local.isoformat()
 
 
+def _collection_parameters(
+    args: argparse.Namespace,
+) -> tuple[datetime | None, datetime, dict[str, Any], dict[str, Any], str]:
+    captured_end_utc = datetime.now(timezone.utc)
+    if args.last_messages is not None:
+        request = {"mode": "last_messages", "count": args.last_messages}
+        window = {
+            "mode": "last_messages",
+            "requested_count": args.last_messages,
+            "since_local": None,
+            "until_local": captured_end_utc.astimezone(LOCAL_TZ).isoformat(),
+        }
+        return None, captured_end_utc, window, request, f"last-{args.last_messages}-messages"
+
+    start_utc, end_utc, start_local_iso, end_local_iso = _window_bounds(
+        args, captured_end_utc
+    )
+    window = {
+        "mode": "time_window",
+        "since_local": start_local_iso,
+        "until_local": end_local_iso,
+    }
+    if args.since is not None:
+        request = {"mode": "range", "since": start_local_iso, "until": end_local_iso}
+        raw_label = f"range-{start_local_iso}-{end_local_iso}"
+        label = re.sub(r"[^A-Za-z0-9_.-]+", "-", raw_label).strip("-")[:120]
+    elif args.last_hours is not None:
+        request = {"mode": "last_hours", "hours": args.last_hours}
+        label = f"last-{args.last_hours:g}h"
+    else:
+        request = {"mode": "date", "date": args.date}
+        label = args.date
+    return start_utc, end_utc, window, request, label
+
+
+def _record_local_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        parsed = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=LOCAL_TZ)
+    return parsed.astimezone(LOCAL_TZ)
+
+
+def _memory_state(
+    snapshot: dict[str, Any] | None,
+    current_markers: list[dict[str, Any]],
+    *,
+    request: dict[str, Any],
+    window_start: str | None,
+    force_refresh: bool,
+) -> str:
+    if snapshot is None:
+        return "miss"
+    if force_refresh:
+        return "refresh"
+
+    if request["mode"] == "last_hours" and snapshot["source_message_count"]:
+        first_message = _record_local_datetime(snapshot.get("first_message_time"))
+        current_start = _record_local_datetime(window_start)
+        if first_message is None or current_start is None or first_message < current_start:
+            return "refresh"
+
+    stored_markers = snapshot.get("tail_markers") or []
+    if not stored_markers:
+        return "hit" if not current_markers and not snapshot["source_message_count"] else "refresh"
+    if not current_markers:
+        return "refresh"
+
+    stored_last_id = snapshot.get("last_message_id")
+    current_last_id = current_markers[-1]["id"]
+    if not isinstance(stored_last_id, int) or current_last_id < stored_last_id:
+        return "refresh"
+
+    current_by_id = {marker["id"]: marker["fingerprint"] for marker in current_markers}
+    stored_by_id = {marker["id"]: marker["fingerprint"] for marker in stored_markers}
+    if stored_last_id not in current_by_id:
+        # More than the bounded tail changed since the checkpoint, so a safe
+        # incremental merge is no longer possible.
+        return "refresh"
+    current_first_id = current_markers[0]["id"]
+    for message_id, fingerprint in stored_by_id.items():
+        current_fingerprint = current_by_id.get(message_id)
+        if current_fingerprint is None and message_id >= current_first_id:
+            return "refresh"
+        if current_fingerprint is not None and current_fingerprint != fingerprint:
+            return "refresh"
+
+    if current_last_id == stored_last_id:
+        return "hit" if current_markers == stored_markers else "refresh"
+
+    if (
+        request["mode"] == "last_messages"
+        and snapshot["source_message_count"] >= int(request["count"])
+    ):
+        return "refresh"
+    return "delta"
+
+
+def _source_checkpoint(
+    *,
+    records: list[dict[str, Any]],
+    snapshot: dict[str, Any] | None,
+    state: str,
+    markers: list[dict[str, Any]],
+    window: dict[str, Any],
+) -> dict[str, Any]:
+    incremental = state == "delta" and snapshot is not None
+    if incremental:
+        message_count = int(snapshot["source_message_count"]) + len(records)
+        first_message_id = snapshot.get("first_message_id")
+        first_message_time = snapshot.get("first_message_time")
+    else:
+        message_count = len(records)
+        first_message_id = records[0]["id"] if records else None
+        first_message_time = records[0]["time"] if records else None
+
+    last_message_id = records[-1]["id"] if records else None
+    last_message_time = records[-1]["time"] if records else None
+    if incremental and not records:
+        last_message_id = snapshot.get("last_message_id")
+        last_message_time = snapshot.get("last_message_time")
+
+    return {
+        "message_count": message_count,
+        "first_message_id": first_message_id,
+        "last_message_id": last_message_id,
+        "first_message_time": first_message_time,
+        "last_message_time": last_message_time,
+        "window_start": window.get("since_local"),
+        "window_end": window.get("until_local"),
+        "tail_markers": markers,
+        "validation": {
+            "mode": "recent_tail",
+            "marker_count": len(markers),
+            "maximum_marker_count": TAIL_VALIDATION_MARKERS,
+        },
+    }
+
+
+def _agent_context(compact: str, memory: dict[str, Any] | None) -> str:
+    if not memory:
+        return compact
+    previous = memory.get("previous_summary")
+    if not previous:
+        return compact
+    return (
+        "Ранее сохранённая структурированная сводка:\n"
+        + json.dumps(previous, ensure_ascii=False, indent=2)
+        + "\n\nНовые сообщения после сохранённого курсора:\n"
+        + compact
+    )
+
+
+def _summary_store_path(settings: Any, args: argparse.Namespace) -> Path:
+    return Path(args.memory_db) if args.memory_db else memory_database_path(settings.data_dir)
+
+
+def _print_cache_hit(snapshot: dict[str, Any], *, as_json: bool) -> None:
+    payload = {
+        "schema": "telegram_dialog_memory_cache.v1",
+        "cache_status": "hit",
+        "summary": snapshot["summary"],
+        "source_message_count": snapshot["source_message_count"],
+        "last_message_id": snapshot["last_message_id"],
+        "revision": snapshot["revision"],
+        "validation": "recent_tail",
+    }
+    if as_json:
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        print(json.dumps(snapshot["summary"], ensure_ascii=False, indent=2))
+        print(
+            f"\n[summary memory: cache_hit; revision={snapshot['revision']}; "
+            f"messages={snapshot['source_message_count']}; validation=recent_tail]"
+        )
+
+
 async def _run(args: argparse.Namespace) -> int:
     settings = load_settings(args.account)
     apply_runtime_env(settings)
+    start_utc, end_utc, window, request, label = _collection_parameters(args)
+    memory_enabled = args.do_summary and not args.no_memory
     client = TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
     await client.connect()
     try:
         if not await client.is_user_authorized():
             raise RuntimeError("Telegram session is not authorized")
         entity = await _resolve_entity(client, _peer_arg(str(args.chat)))
-        if args.last_messages is not None:
-            records = await _collect_messages(
-                client,
-                entity,
-                start_utc=None,
-                end_utc=None,
-                sender_id=args.sender_id,
+        resolved_chat_id = int(get_peer_id(entity))
+        account_name = settings.account or "default"
+        snapshot: dict[str, Any] | None = None
+        current_markers: list[dict[str, Any]] = []
+        memory_state: str | None = None
+        identifier: str | None = None
+
+        if memory_enabled:
+            identifier = scope_key(
+                account=account_name,
+                chat_id=resolved_chat_id,
                 topic_id=args.topic_id,
-                limit=args.last_messages,
+                sender_id=args.sender_id,
+                request=request,
             )
-            start_local_iso = records[0]["time"] if records else None
-            end_local_iso = records[-1]["time"] if records else None
-            window = {
-                "mode": "last_messages",
-                "requested_count": args.last_messages,
-                "since_local": start_local_iso,
-                "until_local": end_local_iso,
-            }
-        else:
-            start_utc, end_utc, start_local_iso, end_local_iso = _window_bounds(args)
-            records = await _collect_messages(
+            with SummaryStore(_summary_store_path(settings, args)) as store:
+                snapshot = store.get(identifier)
+            marker_limit = (
+                min(TAIL_VALIDATION_MARKERS, args.last_messages)
+                if args.last_messages is not None
+                else TAIL_VALIDATION_MARKERS
+            )
+            current_markers = await _collect_recent_markers(
                 client,
                 entity,
                 start_utc=start_utc,
                 end_utc=end_utc,
                 sender_id=args.sender_id,
                 topic_id=args.topic_id,
+                limit=marker_limit,
             )
-            window = {
-                "mode": "time_window",
-                "since_local": start_local_iso,
-                "until_local": end_local_iso,
+            memory_state = _memory_state(
+                snapshot,
+                current_markers,
+                request=request,
+                window_start=window.get("since_local"),
+                force_refresh=args.force_refresh,
+            )
+            if memory_state == "hit" and snapshot is not None:
+                with SummaryStore(_summary_store_path(settings, args)) as store:
+                    store.mark_validated(identifier)
+                _print_cache_hit(snapshot, as_json=args.json)
+                return 0
+
+        collection_limit = args.last_messages if args.last_messages is not None else None
+        min_id = (
+            int(snapshot["last_message_id"])
+            if memory_state == "delta"
+            and snapshot is not None
+            and snapshot.get("last_message_id") is not None
+            else None
+        )
+        records = await _collect_messages(
+            client,
+            entity,
+            start_utc=start_utc,
+            end_utc=end_utc,
+            sender_id=args.sender_id,
+            topic_id=args.topic_id,
+            limit=collection_limit,
+            min_id=min_id,
+        )
+
+        if memory_state == "delta" and snapshot is not None:
+            last_messages_overflow = (
+                args.last_messages is not None
+                and int(snapshot["source_message_count"]) + len(records) > args.last_messages
+            )
+            if not records or last_messages_overflow:
+                memory_state = "refresh"
+                records = await _collect_messages(
+                    client,
+                    entity,
+                    start_utc=start_utc,
+                    end_utc=end_utc,
+                    sender_id=args.sender_id,
+                    topic_id=args.topic_id,
+                    limit=collection_limit,
+                )
+
+        if args.last_messages is not None:
+            if memory_state == "delta" and snapshot is not None:
+                window["since_local"] = snapshot.get("first_message_time")
+            else:
+                window["since_local"] = records[0]["time"] if records else None
+            window["until_local"] = records[-1]["time"] if records else None
+
+        memory: dict[str, Any] | None = None
+        if memory_enabled:
+            if memory_state is None or identifier is None:
+                raise RuntimeError("summary memory planning did not produce a preparation")
+            checkpoint = _source_checkpoint(
+                records=records,
+                snapshot=snapshot,
+                state=memory_state,
+                markers=current_markers,
+                window=window,
+            )
+            memory = {
+                "status": memory_state,
+                "commit_required": True,
+                "previous_summary": (
+                    snapshot["summary"] if memory_state == "delta" and snapshot else None
+                ),
+                "preparation": {
+                    "scope_key": identifier,
+                    "scope": {
+                        "account": account_name,
+                        "chat_id": resolved_chat_id,
+                        "topic_id": args.topic_id,
+                        "sender_id": args.sender_id,
+                        "request": request,
+                    },
+                    "base_revision": int(snapshot["revision"]) if snapshot else 0,
+                    "prepared_at": datetime.now(timezone.utc).isoformat(),
+                    "source": checkpoint,
+                },
             }
 
         transcribable_count = sum(1 for record in records if _is_transcribable(record["kind"]))
         compact, authors = _compact_lines(records)
         payload = {
-            "schema": "telegram_chat_summary.v1",
+            "schema": "telegram_chat_summary.v2",
             "chat_id": args.chat,
+            "resolved_chat_id": resolved_chat_id,
             "topic_id": args.topic_id,
             "date": args.date,
             "window": window,
@@ -529,13 +894,12 @@ async def _run(args: argparse.Namespace) -> int:
             "authors": authors,
             "messages": records,
         }
-        if args.last_messages is not None:
-            label = f"last-{args.last_messages}-messages"
-        else:
-            label = args.date or f"last-{args.last_hours:g}h"
+        if memory is not None:
+            payload["memory"] = memory
+        safe_chat = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(args.chat)).strip("-") or "chat"
         output_path = Path(
             args.output
-            or (Path(settings.transcripts_dir) / f"{str(args.chat).replace('-', 'm')}_{label}_native.json")
+            or (Path(settings.transcripts_dir) / f"{safe_chat}_{label}_native.json")
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if args.resume and output_path.exists():
@@ -631,10 +995,16 @@ async def _run(args: argparse.Namespace) -> int:
 
         context_path = output_path.with_suffix(".context.txt")
         compact, _ = _compact_lines(records)
-        context_path.write_text(compact, encoding="utf-8")
+        agent_context = _agent_context(compact, memory)
+        context_path.write_text(agent_context, encoding="utf-8")
         if args.do_summary:
-            print(compact)
+            print(agent_context)
             print(f"\n[agent context: {context_path}]")
+            if memory is not None:
+                print(
+                    f"[summary memory: status={memory['status']}; commit_required=true; "
+                    f"archive={output_path}]"
+                )
         elif args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
@@ -644,13 +1014,44 @@ async def _run(args: argparse.Namespace) -> int:
         await client.disconnect()
 
 
+def _commit_summary(args: argparse.Namespace) -> int:
+    archive_path = Path(args.summary_from)
+    summary_path = Path(args.commit_summary)
+    payload = json.loads(archive_path.read_text(encoding="utf-8"))
+    memory = payload.get("memory")
+    preparation = memory.get("preparation") if isinstance(memory, dict) else None
+    if not isinstance(preparation, dict) or not memory.get("commit_required"):
+        raise ValueError("archive has no pending summary-memory preparation")
+
+    document = json.loads(summary_path.read_text(encoding="utf-8"))
+    settings = load_settings(args.account)
+    apply_runtime_env(settings)
+    with SummaryStore(_summary_store_path(settings, args)) as store:
+        snapshot = store.commit(preparation, document)
+    print(
+        json.dumps(
+            {
+                "status": "committed",
+                "scope_key": snapshot["scope_key"],
+                "revision": snapshot["revision"],
+                "source_message_count": snapshot["source_message_count"],
+                "database": str(_summary_store_path(settings, args)),
+            },
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
 async def _run_from_archive(args: argparse.Namespace) -> int:
     path = Path(args.summary_from)
     payload = json.loads(path.read_text(encoding="utf-8"))
     compact, _ = _compact_lines(payload.get("messages") or [])
+    memory = payload.get("memory") if isinstance(payload.get("memory"), dict) else None
+    agent_context = _agent_context(compact, memory)
     context_path = path.with_suffix(".context.txt")
-    context_path.write_text(compact, encoding="utf-8")
-    print(compact)
+    context_path.write_text(agent_context, encoding="utf-8")
+    print(agent_context)
     print(f"\n[agent context: {context_path}]")
     print(
         f"[provenance: messages={payload.get('message_count')}, "
@@ -670,6 +1071,10 @@ def main() -> int:
     window_group.add_argument("--date", help="Local date YYYY-MM-DD in Europe/Moscow")
     window_group.add_argument("--last-hours", type=float, help="Floating local-time window ending now, e.g. 24")
     window_group.add_argument("--last-messages", type=int, help="Newest messages to collect, maximum 1000")
+    window_group.add_argument(
+        "--since", help="Inclusive local ISO date/time for a stable custom range"
+    )
+    parser.add_argument("--until", help="Exclusive local ISO date/time paired with --since")
     parser.add_argument("--sender-id", type=int, help="Only include messages from this exact sender id")
     parser.add_argument("--transcription-timeout", type=float, default=180)
     parser.add_argument(
@@ -685,18 +1090,47 @@ def main() -> int:
     parser.add_argument("--progress-log", help="JSONL progress log path; defaults beside the archive")
     parser.add_argument("--resume", action="store_true", help="Reuse completed transcriptions from an existing matching archive")
     parser.add_argument("--summary-from", help="Generate summary from an existing compact JSON archive")
+    parser.add_argument(
+        "--commit-summary",
+        help="Commit a telegram_dialog_memory.v1 JSON file using --summary-from as preparation",
+    )
+    parser.add_argument("--memory-db", help="Override the account-local unified memory SQLite path")
+    parser.add_argument(
+        "--force-refresh", action="store_true", help="Ignore a saved summary and rebuild the window"
+    )
+    parser.add_argument(
+        "--no-memory", action="store_true", help="Disable summary-memory lookup for this collection"
+    )
     parser.add_argument("--json", action="store_true", help="Print compact JSON instead of summary text")
     parser.add_argument("--do-summary", action="store_true", help="Emit compact context for the current agent")
     args = parser.parse_args()
     try:
+        if args.commit_summary:
+            if not args.summary_from:
+                parser.error("--commit-summary requires --summary-from <archive>")
+            if not args.account:
+                parser.error("--account is required with --commit-summary")
+            return _commit_summary(args)
         if args.summary_from:
             return asyncio.run(_run_from_archive(args))
         if not args.account:
             parser.error("--account is required unless --summary-from is used")
         if not args.chat:
             parser.error("--chat is required unless --summary-from is used")
-        if args.date is None and args.last_hours is None and args.last_messages is None:
-            parser.error("one of --date, --last-hours or --last-messages is required unless --summary-from is used")
+        if args.since is not None and args.until is None:
+            parser.error("--since requires --until")
+        if args.until is not None and args.since is None:
+            parser.error("--until requires --since")
+        if (
+            args.date is None
+            and args.last_hours is None
+            and args.last_messages is None
+            and args.since is None
+        ):
+            parser.error(
+                "one of --date, --last-hours, --last-messages or --since/--until "
+                "is required unless --summary-from is used"
+            )
         if args.last_messages is not None and not 1 <= args.last_messages <= MAX_LAST_MESSAGES:
             parser.error(f"--last-messages must be between 1 and {MAX_LAST_MESSAGES}")
         if args.topic_id is not None and args.topic_id <= 0:

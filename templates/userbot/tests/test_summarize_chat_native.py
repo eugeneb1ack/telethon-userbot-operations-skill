@@ -51,6 +51,88 @@ class NativeSummaryFocusedTests(unittest.TestCase):
         self.assertEqual([event["message_id"] for event in events], [0, 1, 2])
         self.assertTrue(all(item["transcription"]["complete"] for item in records))
 
+    @staticmethod
+    def _snapshot() -> dict:
+        return {
+            "source_message_count": 2,
+            "first_message_time": "2026-01-01 10:00:00",
+            "last_message_id": 11,
+            "tail_markers": [
+                {"id": 10, "fingerprint": "hash-10"},
+                {"id": 11, "fingerprint": "hash-11"},
+            ],
+        }
+
+    def test_memory_state_uses_hit_for_unchanged_tail(self) -> None:
+        snapshot = self._snapshot()
+        state = summarize_chat_native._memory_state(
+            snapshot,
+            list(snapshot["tail_markers"]),
+            request={"mode": "date", "date": "2026-01-01"},
+            window_start="2026-01-01T00:00:00+03:00",
+            force_refresh=False,
+        )
+        self.assertEqual(state, "hit")
+
+    def test_memory_state_uses_delta_only_with_valid_anchor(self) -> None:
+        state = summarize_chat_native._memory_state(
+            self._snapshot(),
+            [
+                {"id": 10, "fingerprint": "hash-10"},
+                {"id": 11, "fingerprint": "hash-11"},
+                {"id": 12, "fingerprint": "hash-12"},
+            ],
+            request={"mode": "range", "since": "a", "until": "b"},
+            window_start="2026-01-01T00:00:00+03:00",
+            force_refresh=False,
+        )
+        self.assertEqual(state, "delta")
+
+    def test_memory_state_refreshes_changed_tail(self) -> None:
+        state = summarize_chat_native._memory_state(
+            self._snapshot(),
+            [
+                {"id": 10, "fingerprint": "changed"},
+                {"id": 11, "fingerprint": "hash-11"},
+            ],
+            request={"mode": "date", "date": "2026-01-01"},
+            window_start="2026-01-01T00:00:00+03:00",
+            force_refresh=False,
+        )
+        self.assertEqual(state, "refresh")
+
+    def test_memory_state_refreshes_deleted_marker_inside_overlap(self) -> None:
+        snapshot = self._snapshot()
+        snapshot["last_message_id"] = 12
+        snapshot["source_message_count"] = 3
+        snapshot["tail_markers"].append({"id": 12, "fingerprint": "hash-12"})
+        state = summarize_chat_native._memory_state(
+            snapshot,
+            [
+                {"id": 10, "fingerprint": "hash-10"},
+                {"id": 12, "fingerprint": "hash-12"},
+                {"id": 13, "fingerprint": "hash-13"},
+            ],
+            request={"mode": "range", "since": "a", "until": "b"},
+            window_start="2026-01-01T00:00:00+03:00",
+            force_refresh=False,
+        )
+        self.assertEqual(state, "refresh")
+
+    def test_full_last_messages_window_refreshes_when_new_message_arrives(self) -> None:
+        snapshot = self._snapshot()
+        state = summarize_chat_native._memory_state(
+            snapshot,
+            [
+                *snapshot["tail_markers"],
+                {"id": 12, "fingerprint": "hash-12"},
+            ],
+            request={"mode": "last_messages", "count": 2},
+            window_start=None,
+            force_refresh=False,
+        )
+        self.assertEqual(state, "refresh")
+
 
 if __name__ == "__main__":
     unittest.main()

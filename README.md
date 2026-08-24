@@ -15,7 +15,7 @@
   Telegram channel: <a href="https://t.me/house_404"><strong>@house_404</strong></a>
 </p>
 
-This repository packages an agent-neutral skill named **`userbot`** and a secret-free [Telethon](https://docs.telethon.dev/) runtime template. It lets a coding agent inspect Telegram, work with messages and media, manage supported account features, receive events, and extend the local runtime with one narrowly scoped operation when the existing catalog does not cover a request.
+This repository packages an agent-neutral skill named **`userbot`** and a secret-free [Telethon](https://docs.telethon.dev/) runtime template. It lets a coding agent inspect Telegram, work with messages and media, manage supported account features, receive events, reuse compact locally stored knowledge, and extend the local runtime with one narrowly scoped operation when the existing catalog does not cover a request.
 
 It is a user-account automation toolkit, not a Bot API wrapper. It operates through a Telegram session authorized by the account owner.
 
@@ -35,6 +35,7 @@ Most Telegram automation tools expose either a bot account or an unrestricted sc
 - Common reads use an on-demand Unix-socket gateway that exits after idle time.
 - Writes are dry-run by default and require a separate `--execute` step.
 - Batch targets are frozen before execution and final state is read back.
+- Verified reusable knowledge is kept in a bounded account-local SQLite memory, so repeated requests can start from compact context and revalidate only what may have changed.
 - Unsupported operations go through a bounded module-authoring and test workflow.
 - Credentials, sessions, runtime logs, media, and chat data stay outside this repository.
 
@@ -44,6 +45,7 @@ Most Telegram automation tools expose either a bot account or an unrestricted sc
 flowchart LR
     U[Account owner] --> A[AI coding agent]
     A --> S[userbot skill and router]
+    S <--> L[Bounded local semantic memory]
     S --> G[Local JSON gateway]
     G --> O[Single Telethon session owner]
     O --> T[Telegram]
@@ -58,7 +60,7 @@ The skill and the live Telegram runtime are deliberately separate:
 |---|---|---:|
 | Skill repository | Agent instructions, safety rules, validators, source template | No |
 | Installed skill | Local copy discovered by Codex or another skill-aware agent | No |
-| Userbot runtime | Telethon code, account profile, session, logs, event database, downloaded media | Yes — local only |
+| Userbot runtime | Telethon code, account profile, session, logs, event and semantic-memory databases, downloaded media | Yes — local only |
 | Telegram | The external account and its data | External service |
 
 For a mutating request, the intended path is:
@@ -89,13 +91,26 @@ The installed registry is the source of truth. The current template includes gua
 
 - **Messages:** search history, inspect recent messages, send, edit your own message, forward exact message IDs, pin and unpin.
 - **Conversations:** list personal chats, groups, channels, bots, members, owned channels, and channels where the account has participated in comments.
-- **Voice and media:** request Telegram-native voice transcription, queue a media-aware daily summary, preview or download selected attachments into local runtime storage.
+- **Voice and media:** request Telegram-native voice transcription, incrementally maintain a bounded media-aware dialog summary, preview or download selected attachments into local runtime storage.
+- **Memory and reuse:** recall compact verified preferences, decisions, procedures, facts, entity context, and historical task results before repeating expensive work; revision-update useful results after verification.
 - **Account and identity:** inspect or update supported profile fields and custom-emoji status.
 - **Groups and reactions:** inspect or change one member's permissions, mention members, react to messages, and remove your own messages through guarded batch plans.
 - **Events and integrations:** collect direct-message, mention, and reply events in a local SQLite inbox; optionally deliver compact HMAC-signed webhooks.
 - **Extension:** inspect the installed Telethon API and add one focused, tested module when no route exists.
 
 This is not an unrestricted raw Telegram API console. Authentication changes, password or recovery flows, passkeys, phone-number changes, account deletion, payments, gifts, Stars, refunds, SMS jobs, and secret-chat internals are intentionally outside the generic extension path.
+
+## Bounded local semantic memory
+
+The agent may keep a small reusable result when it is verified, likely to help again, and safe to retain locally. This is not a copy of the conversation: raw messages, transcripts, media, credentials, session material, speculative profiles, and one-off chatter are rejected by policy. Dialog summaries use their own structured tables in the same database and never store raw message text there.
+
+Before repeated work, the agent searches this memory with a compact query. By default it receives only short summaries and freshness metadata, which reduces prompt size. It then applies one of three freshness rules:
+
+- stable preferences, decisions, and procedures remain usable until contradicted;
+- time-sensitive facts have an expiry and are checked at their live source before a current answer or action depends on them;
+- historical task results prove only what was verified at that time and never replace a current-state check.
+
+The general store is capped at 16 KiB per item, 128 items per scope, and 1,024 items per account. Stable keys deduplicate repeated writes, optimistic revisions prevent stale overwrite, expired entries are removed, and least-recently-used entries are pruned. A memory hit never skips target resolution, a Telegram dry-run, explicit approval, or final read-back. See [the semantic-memory contract](references/semantic-memory.md) for the schema and CLI.
 
 ## Safety model
 
@@ -153,6 +168,8 @@ Prepare a dry-run for editing message 42 in @example. Do not execute it yet.
 
 Find the Telegram channels where I have posted comments, without returning private message text.
 
+Recall what we already verified about this workflow, re-check anything time-sensitive, and update the local memory if the result changed.
+
 Check whether a guarded route exists for changing a group title. If it does not, add one focused module with tests and show me its dry-run. Do not execute it yet.
 ```
 
@@ -174,7 +191,7 @@ telethon-userbot-operations-skill/
 │   ├── telethon_api_inventory.py    # zero-network API introspection
 │   └── validate_package.py          # package and secret-boundary validation
 └── templates/userbot/               # secret-free runtime source template
-    ├── core/                         # config, locking, gateway, event store
+    ├── core/                         # config, locking, gateway, event + memory stores
     ├── modules/                      # guarded Telegram operations
     ├── scripts/                      # router, runner, daemon, account setup
     ├── tests/                        # offline fake-client regression suite

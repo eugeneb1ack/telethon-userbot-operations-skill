@@ -1,6 +1,6 @@
 ---
 name: userbot
-description: Operate and extend a local agent-neutral Telethon userbot through its on-demand gateway and guarded modules. Use to inspect Telegram data, receive direct-message/mention/reply events, send or modify messages, manage groups or profiles, configure signed webhooks, bootstrap a userbot, verify a session, or add and validate one guarded Telethon module.
+description: Operate and extend a local agent-neutral Telethon userbot through its on-demand gateway, bounded semantic memory, and guarded modules. Use to inspect Telegram data, reuse and revalidate compact local knowledge, receive direct-message/mention/reply events, send or modify messages, manage groups or profiles, configure signed webhooks, bootstrap a userbot, verify a session, or add and validate one guarded Telethon module.
 ---
 
 # Telethon Userbot
@@ -70,6 +70,18 @@ cd "$USERBOT_ROOT"
 
 Use the single returned command, not an ad-hoc script. The registry prefers gateway routes for common reads and routes direct modules through `userbotrun.py`, which serializes session ownership and enforces a hard process timeout.
 
+## Bounded local semantic memory
+
+Read `references/semantic-memory.md` whenever a request could reuse an earlier preference, decision, procedure, verified fact, entity context, or task result.
+
+1. Before repeating expensive collection or reasoning, run `scripts/userbot_memory.py --account <name> recall` with a compact query and the narrowest known scope. This local CLI does not connect to Telegram or acquire its session lock. Use the default summary-only results first; request details only when needed.
+2. Treat recalled entries according to their `validity`. `stable` preferences and procedures remain usable until contradicted. Re-check `temporal` facts at their source before a current answer or action depends on them. Treat every `historical` task result only as evidence of what happened then; inspect live state again.
+3. After a result is verified, save it only when it is compact, reusable, source-bounded, and likely to prevent meaningful repeated work. Choose one of `fact`, `preference`, `decision`, `procedure`, `entity_context`, or `task_result`; include compact provenance. Use a stable key and `--expected-revision` when updating recalled knowledge.
+4. Never store raw messages, transcripts, exports, media, credentials, auth/session material, phone numbers, speculative profiles, unverified inference, or one-off chatter. Do not use memory as an audit log. Database files remain under `runtime/<account>/data/` and never enter this skill checkout.
+5. A memory hit never authorizes an external action and never replaces current target resolution, Telegram dry-run, explicit write approval, frozen IDs, or final read-back. If freshness cannot be established, say so and verify live or ignore the item.
+
+The agent decides whether an item is worth keeping; it must not write a memory record for every request. Identical documents deduplicate, revisions prevent stale overwrite, temporal records expire automatically, and per-scope/account limits prevent unbounded growth.
+
 ## Session onboarding
 
 Load `references/session-bootstrap.md` for setup, login, importing a `.session`, repair, or authorization verification.
@@ -119,11 +131,12 @@ This is the bounded self-improvement loop: reuse first; otherwise inspect the in
 
 When the account owner asks to summarize a chat, direct dialog, group, or channel, make the summary media-aware. This is a read-only Telegram workflow with contained local files; do not send, forward, or upload the source media.
 
-1. Run `summarize_chat_native.py` through `userbotrun.py` with `--do-summary`. Do **not** use legacy `summarize.py` or `--metadata-only` for a delivered owner summary. The native collector must invoke Telegram's `messages.TranscribeAudioRequest` for every `voice`, `audio`, and `video_note` record.
-2. Before writing the result, inspect the archive's `transcribable_count`, `transcribed_complete_count`, and per-message transcription status. Include only complete native transcriptions in the summary context. Never fall back to Whisper or another external STT service; report any incomplete Telegram transcription as a coverage limitation.
-3. For every record whose `kind` is `photo`, take the exact message IDs from the archive and call `download_media.py` through `userbotrun.py`. First inspect its dry-run plan; then use `--execute` with a unique safe `--output-subdir`, without `--overwrite`. Open every verified local image with `view_image` (or the host's equivalent local multimodal image inspection) and add a concise visual description relevant to the conversation into the final context, including photos without captions.
+1. Read `references/summary-memory.md`, then run `summarize_chat_native.py` through `userbotrun.py` with `--do-summary`. Do **not** use legacy `summarize.py`, `--metadata-only`, or `--no-memory` for a delivered owner summary. The native collector must invoke Telegram's `messages.TranscribeAudioRequest` for every newly collected `voice`, `audio`, and `video_note` record.
+2. If the module returns `cache_hit`, use the stored structured result; do not collect media or commit again. Otherwise inspect the new archive's `transcribable_count`, `transcribed_complete_count`, and per-message transcription status. Include only complete native transcriptions in the summary context. Never fall back to Whisper or another external STT service; report any incomplete Telegram transcription as a coverage limitation.
+3. For every newly collected record whose `kind` is `photo`, take the exact message IDs from the archive and call `download_media.py` through `userbotrun.py`. First inspect its dry-run plan; then use `--execute` with a unique safe `--output-subdir`, without `--overwrite`. Open every verified local image with `view_image` (or the host's equivalent local multimodal image inspection) and add a concise visual description relevant to the conversation into the final context, including photos without captions.
 4. Do not download, play, transcribe, or visually analyze video files. Retain a video's text/caption in the context and state that its visual content was not analyzed if that can affect the summary.
 5. Keep downloaded photos only in the local runtime data directory. Do not expose raw media, transcriptions, or private identifiers beyond what the owner asked to summarize.
+6. For `miss`, `delta`, or `refresh`, write the complete structured `telegram_dialog_memory.v1` result and commit it through the same module before delivering the answer. A `delta` document must merge the saved summary with new context. Never finish a new summary while `commit_required=true` remains uncommitted.
 
 ### Native STT queue, progress, and recovery
 
