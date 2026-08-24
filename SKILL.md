@@ -15,6 +15,16 @@ export USERBOT_PY="${USERBOT_PY:-$USERBOT_ROOT/venv/bin/python}"
 
 One process owns each authorized account session. Prefer the short-lived local gateway for supported reads and `scripts/userbotrun.py` for direct modules. Never open the same `.session` from a second process.
 
+## Resolve runtime access before the first command
+
+Read `references/runtime-access.md` when the runtime is outside the current workspace, the harness permissions are unknown, or an earlier task saw `PermissionError`/`Operation not permitted`.
+
+- Resolve `USERBOT_ROOT` and compare its runtime state paths with the harness's current filesystem and local-socket permissions before executing a runtime command.
+- A Telegram read can still mutate local state: SQLite recall/cache validation uses WAL/SHM, expiry/LRU metadata and validation timestamps; gateway routes also use logs, locks, PID/socket files, and bounded archives. Do not describe the local operation as filesystem read-only.
+- If the required runtime path is outside the active boundary and the harness supports scoped elevation, send the exact canonical command through that native narrow path on the first attempt. In Codex, use the exact command with `require_escalated` instead of first running a sandboxed command that is expected to fail.
+- If the harness supports no scoped elevation, request the smallest runtime root/profile change before execution. Do not search for an allegedly “unblocked” copy, move/copy the SQLite database into the workspace or `/tmp`, grant a generic Python interpreter prefix, or weaken the whole sandbox.
+- Treat host access as transport only. It never replaces Telegram write preview/approval, target resolution, or read-back.
+
 ## Route every request
 
 First query the registry; it is local and performs no Telegram I/O:
@@ -119,6 +129,7 @@ Do not use bootstrap as an updater. For an existing runtime, apply reviewed sour
 ## Reference routing
 
 - `references/operation-playbook.md`: exact Telegram operation families and verification.
+- `references/runtime-access.md`: preflight and narrow sandbox/harness access without failed probes.
 - `references/semantic-memory.md`: bounded cross-task memory and freshness rules.
 - `references/summary-memory.md`: incremental dialog summaries and coverage.
 - `references/gateway-webhooks.md`: gateway, event retention, webhook delivery.
@@ -126,4 +137,4 @@ Do not use bootstrap as an updater. For an existing runtime, apply reviewed sour
 - `references/channel-rich-publishing.md`: approved rich channel publishing.
 - `references/module-authoring.md`: focused self-extension and quality gate.
 
-For custom emoji, distinguish inline entities, reactions, profile/channel status, and packs before choosing an API. A sandbox `PermissionError` on runtime logs is an environment policy failure, not evidence that Telegram failed; request only narrow access to the exact diagnostic command. Docker does not bypass the host sandbox or justify copying secret-bearing runtime data.
+For custom emoji, distinguish inline entities, reactions, profile/channel status, and packs before choosing an API. A sandbox `PermissionError` is an environment policy failure, not evidence that Telegram failed; follow the runtime-access preflight and retry the same canonical route at most once through the narrow native access path. Docker does not bypass the host sandbox or justify copying secret-bearing runtime data.

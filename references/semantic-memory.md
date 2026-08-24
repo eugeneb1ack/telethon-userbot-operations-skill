@@ -10,6 +10,8 @@ For backward compatibility, if an older `summary_memory.sqlite3` exists and the 
 
 The database is plaintext runtime data. Its SQLite database/WAL files are restricted to the local OS account with mode `0600`, but the application does not encrypt their contents. Protect the machine and runtime directory. Never put the database in the public skill checkout, commit it, upload it, or share it between accounts.
 
+Recall is read-only with respect to Telegram, not to the local database: it purges expired rows, updates access/LRU metadata, and opens SQLite in WAL mode. Follow `runtime-access.md` before the first command. If the runtime is outside the active harness boundary, choose the narrow native access/elevation route up front; do not use a failing probe or copy the database elsewhere.
+
 ## Recall before repeating work
 
 Recall memory when a new request could depend on an earlier preference, decision, procedure, verified fact, entity context, or completed task result:

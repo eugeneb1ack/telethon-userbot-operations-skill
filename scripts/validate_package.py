@@ -22,6 +22,7 @@ REQUIRED = (
     ".gitignore",
     "assets/telegram-userbot-skill-manga.png",
     "references/operation-playbook.md",
+    "references/runtime-access.md",
     "references/semantic-memory.md",
     "references/summary-memory.md",
     "references/gateway-webhooks.md",
@@ -99,6 +100,19 @@ INSTALL_GUIDANCE_CONTRACT = (
     "API development tools",
     "BotFather",
 )
+RUNTIME_ACCESS_SKILL_CONTRACT = (
+    "`references/runtime-access.md`",
+    "WAL/SHM",
+    "`require_escalated`",
+    "move/copy the SQLite database",
+)
+RUNTIME_ACCESS_REFERENCE_CONTRACT = (
+    "sandbox_workspace_write.writable_roots",
+    "require_escalated",
+    "generic Python interpreter",
+    "Other harnesses",
+    "Do not edit `~/.codex/config.toml`",
+)
 
 
 def source_files() -> list[Path]:
@@ -159,6 +173,31 @@ def main() -> int:
         print(
             "SKILL.md is missing the bounded semantic-memory contract: "
             + ", ".join(missing_semantic_memory_contract),
+            file=sys.stderr,
+        )
+        return 1
+
+    missing_runtime_access_contract = [
+        required for required in RUNTIME_ACCESS_SKILL_CONTRACT if required not in skill
+    ]
+    if missing_runtime_access_contract:
+        print(
+            "SKILL.md is missing the proactive runtime-access contract: "
+            + ", ".join(missing_runtime_access_contract),
+            file=sys.stderr,
+        )
+        return 1
+
+    runtime_access = (ROOT / "references/runtime-access.md").read_text(encoding="utf-8")
+    missing_runtime_access_reference = [
+        required
+        for required in RUNTIME_ACCESS_REFERENCE_CONTRACT
+        if required not in runtime_access
+    ]
+    if missing_runtime_access_reference:
+        print(
+            "references/runtime-access.md is incomplete: "
+            + ", ".join(missing_runtime_access_reference),
             file=sys.stderr,
         )
         return 1

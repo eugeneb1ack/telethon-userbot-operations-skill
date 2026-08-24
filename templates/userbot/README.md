@@ -56,6 +56,8 @@ venv/bin/python scripts/userbot_memory.py --account main recall \
 
 Сохраняются только компактные `fact`, `preference`, `decision`, `procedure`, `entity_context` и `task_result`. Сырые сообщения, транскрипты, медиа, session/credentials и спекулятивные профили не сохраняются. Общая память ограничена 16 КиБ на запись, 128 записями на scope и 1 024 на аккаунт; устаревшие и LRU-записи вытесняются. Любой изменяемый факт перепроверяется, а результат из памяти не разрешает Telegram write.
 
+`recall` не подключается к Telegram, но локально обновляет SQLite WAL/SHM, expiry и LRU-метаданные. Если runtime находится вне workspace текущего agent harness, канонический навык сначала выполняет access preflight и сразу использует узкое нативное разрешение точной команды; базу нельзя копировать в workspace или `/tmp` ради обхода sandbox.
+
 ## Режимы конфигурации
 
 ### 1) Рекомендуемая схема: shared + account profiles

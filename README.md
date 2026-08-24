@@ -145,6 +145,8 @@ The guide supports two paths:
 
 The guide starts by obtaining the owner's Telegram application credentials at [my.telegram.org/apps](https://my.telegram.org/apps): it covers `API development tools`, explains the form, and makes clear that an API ID/API hash is not a BotFather token. An agent should walk the owner through these actions without asking them to send the credential values.
 
+For new tasks and other agent harnesses, the skill also performs runtime access preflight: it compares the private runtime with the current workspace/permission roots and chooses narrow native permission for the exact command up front. This removes the avoidable first `PermissionError` without disabling the sandbox or expanding Telegram operation authority.
+
 For automatic module authoring, the coding agent needs write access to the local runtime checkout and permission to run its offline test suite. It does not need access to session secrets: login and session authorization remain owner-only.
 
 Minimal preflight after the repository becomes public:

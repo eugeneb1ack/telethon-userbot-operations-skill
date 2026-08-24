@@ -44,6 +44,7 @@ Safety requirements:
 - Do not ask for or inspect API_ID, API_HASH, phone number, Telegram code, 2FA password, account env contents, or .session contents.
 - Do not perform the first Telegram login for the user.
 - If the owner does not have an API ID/API hash yet, guide them through section 0: provide the exact official link, explain where to click, and distinguish these credentials from a BotFather token. Never ask the owner to send the resulting values.
+- Before the first runtime command, compare the private runtime path with the current workspace/permission roots. If it is outside the sandbox, use the narrow native permission route for the exact canonical command immediately; do not first run a doomed probe or copy SQLite/session data into an allowed folder.
 - Stop after dependencies are installed and tell the owner to run the two owner-only commands from INSTALL.md in their own local terminal.
 - After the owner confirms login, run the offline verifier. Run the online authorization check only with explicit approval.
 - Do not make any Telegram write as part of installation.
@@ -204,6 +205,14 @@ venv/bin/python -m unittest discover -s tests -v
 
 At this point the agent must stop. Account setup and first login belong to the owner.
 
+### Accessing the runtime from new agent tasks
+
+The private runtime is intentionally separate from the skill repository. A new Codex task using `workspace-write` may therefore see the source checkout while being unable to modify `runtime/main/data`, logs, lock files, or the Unix socket. Even a saved-summary lookup is not a pure filesystem read: SQLite uses WAL/SHM and updates validation/LRU metadata.
+
+The skill must detect this **before the first runtime call**. For occasional requests, the safe route is to submit the exact canonical command through the harness's narrow native permission mechanism immediately. In Codex, this means using `require_escalated` on the first call; auto-review may allow it without a separate owner prompt. Do not first run a command expected to fail, approve generic `python`, grant full access, move the database to `/tmp`, or open a second Telethon session.
+
+For frequent semantic-memory-only access, the owner may explicitly add the exact `runtime/main/data` directory as an additional writable root in a permissions profile. The skill must not edit `~/.codex/config.toml` or persistent rules on its own. The complete contract is in [references/runtime-access.md](references/runtime-access.md).
+
 ## 8. Owner-only account setup and first login
 
 Run these commands yourself in a trusted local terminal, not through an agent:
@@ -306,7 +315,7 @@ Never re-run bootstrap against an existing runtime. Runtime source updates must 
 | `session.present: false` | The owner must run the local first-login flow. The agent must not perform it. |
 | `safe_permissions: false` | Run `chmod 600` on the reported account/session file without printing its contents. |
 | `authorized: false` | The owner should create a new local session; do not delete the previous session impulsively. |
-| `PermissionError` under runtime logs in a sandbox | Request narrowly scoped access for the exact runtime command. Docker does not bypass the host sandbox. |
+| A new Codex task cannot access runtime SQLite/log/socket state | Do not search for another path or first repeat the sandboxed command. Perform the access preflight and submit the same canonical command through narrow native permission; see [runtime-access.md](references/runtime-access.md). |
 | Session lock is busy | Reuse the gateway or stop the verified idle owner; never launch a second Telethon client against the same session. |
 
 For session import and recovery, read [references/session-bootstrap.md](references/session-bootstrap.md). For the complete security contract, read [SECURITY.md](SECURITY.md).

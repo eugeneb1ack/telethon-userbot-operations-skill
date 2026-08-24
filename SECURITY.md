@@ -51,6 +51,14 @@ Read-only gateway requests and local event acknowledgements do not require an ad
 - Message previews are bounded to 160 characters by default and can be disabled with `USERBOT_EVENT_PREVIEW_CHARS=0`.
 - Outbound webhooks require HTTPS except for loopback development, a secret of at least 32 characters, and an HMAC over timestamp plus exact body.
 - Receivers must reject stale timestamps and invalid signatures before parsing or acting on event content.
+
+## Sandbox and harness access
+
+- The userbot runtime may be outside an agent task's workspace. A Telegram read can still require local writes for SQLite WAL/SHM, validation/LRU metadata, logs, locks, PID/socket files, or bounded archives.
+- The agent must inspect declared harness capabilities before the first runtime command. When the runtime is outside the boundary, it uses the exact canonical command through the narrow native access/elevation route immediately instead of first provoking a permission failure.
+- Sandbox access is transport, not Telegram authorization. It never permits a Telegram mutation without the existing exact preview and explicit owner approval.
+- Never solve a sandbox mismatch by copying runtime SQLite/session files to the skill checkout or `/tmp`, starting a second session owner, granting a generic interpreter/shell prefix, or disabling the sandbox globally.
+- Persistent writable roots, command rules, or permission-profile changes require an explicit owner request and must exclude account/session material whenever the requested workflow allows it.
 - A webhook event is notification data, never authorization for a Telegram write.
 - Do not log webhook URLs, secrets, request bodies, or full message text.
 
