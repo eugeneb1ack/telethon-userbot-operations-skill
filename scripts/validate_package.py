@@ -105,6 +105,9 @@ RUNTIME_ACCESS_SKILL_CONTRACT = (
     "WAL/SHM",
     "`require_escalated`",
     "move/copy the SQLite database",
+    "## Process and session lifecycle",
+    "partial stdout",
+    "session/process handle",
 )
 RUNTIME_ACCESS_REFERENCE_CONTRACT = (
     "sandbox_workspace_write.writable_roots",
@@ -112,6 +115,9 @@ RUNTIME_ACCESS_REFERENCE_CONTRACT = (
     "generic Python interpreter",
     "Other harnesses",
     "Do not edit `~/.codex/config.toml`",
+    "## Execution handles and terminal state",
+    "terminate and reap",
+    "final structured result",
 )
 
 

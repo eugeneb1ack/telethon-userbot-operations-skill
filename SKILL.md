@@ -68,6 +68,15 @@ A memory hit never authorizes an external action and never replaces current targ
 
 For gateway lifecycle, the bounded event inbox, webhook HMAC, or the optional current-login supervisor, read `references/gateway-webhooks.md`.
 
+## Process and session lifecycle
+
+Every started gateway or direct-module invocation must reach one observed terminal state before the turn ends or another process is allowed to own that account session. Read the process-lifecycle section in `references/runtime-access.md` whenever the execution host can yield a session/process handle or a prior command was interrupted.
+
+- A returned session/process handle means the command is still running. Preserve that handle and poll/resume it until an exit status is observed; partial stdout, progress lines, output truncation, or a tool yield is not completion.
+- If the task is replaced, cancelled, timed out, or otherwise abandoned, terminate the exact active handle through the execution host and wait for it to exit. Never leave an unobserved helper in the background or start a second helper for the same account.
+- Treat success as final module JSON plus process exit and any operation-specific verification. If termination or cleanup cannot be confirmed, report the result as incomplete and do not claim the session is free.
+- `scripts/userbotrun.py` owns the child process group and performs graceful `SIGINT` → `SIGTERM` → `SIGKILL` escalation while holding the account lock. Stop the runner, not a guessed child PID. After an unexpected runner death, verify the exact account owner is gone before retrying.
+
 ## Session setup and verification
 
 Read `references/session-bootstrap.md` for bootstrap, login, import, repair, or authorization checks.
@@ -135,7 +144,7 @@ Do not use bootstrap as an updater. For an existing runtime, apply reviewed sour
 ## Reference routing
 
 - `references/operation-playbook.md`: exact Telegram operation families and verification.
-- `references/runtime-access.md`: preflight and narrow sandbox/harness access without failed probes.
+- `references/runtime-access.md`: preflight, execution-handle lifecycle, and narrow sandbox/harness access without failed probes.
 - `references/semantic-memory.md`: bounded cross-task memory and freshness rules.
 - `references/summary-memory.md`: incremental dialog summaries and coverage.
 - `references/gateway-webhooks.md`: gateway, event retention, webhook delivery.

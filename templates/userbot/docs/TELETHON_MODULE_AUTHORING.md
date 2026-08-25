@@ -53,6 +53,8 @@ $PY "$SKILL/scripts/telethon_api_inventory.py" \
 
 Частые read-only операции должны использовать `scripts/userbotctl.py`: он переиспользует или сам запускает короткоживущий gateway. Новый direct helper нужен только когда gateway/registry ещё не покрывают запрос. Его команда в registry обязана идти через `scripts/userbotrun.py`, а не напрямую: runner сериализует доступ к session и завершает зависший subprocess.
 
+Если оболочка вернула session/process handle, команда ещё работает. Сохрани handle и дождись exit status; partial stdout, progress и обрезанный вывод не считаются завершением. При отмене или замене задачи заверши точный handle и дождись reaping до запуска следующего helper для того же account. `userbotrun.py` перехватывает внешние `SIGHUP`/`SIGINT`/`SIGTERM`, завершает process group и освобождает account lock; не посылай сигналы угаданному дочернему PID.
+
 ```bash
 cd "${USERBOT_ROOT:?set USERBOT_ROOT to the userbot project}"
 "$PY" scripts/userbot_module_registry.py --query '<запрос пользователя>' --json

@@ -40,4 +40,5 @@
 - Never commit `.env`, session files, API credentials, or phone numbers.
 - Keep `userbot.session` local only; rotate credentials if accidentally exposed.
 - Only `main.py` / `./run.sh` may perform interactive login. One process may own an account session. Agents use auto-starting `userbotctl.py`; registry direct helpers must run through `userbotrun.py`, never bare.
+- A yielded process/session handle is still running: retain it, wait for final exit, or terminate and reap it before ending the task or starting another helper for that account. Partial stdout is not completion. Stop the `userbotrun.py` owner rather than a guessed child PID.
 - Never ask for, print, inspect, copy, upload, or commit Telegram login codes, 2FA passwords, `.session` contents, API hashes, or account env files. Session readiness is checked only through file metadata and optional `is_user_authorized()`.

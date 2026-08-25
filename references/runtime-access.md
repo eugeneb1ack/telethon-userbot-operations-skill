@@ -46,6 +46,21 @@ Use the equivalent declared capability in the active harness: workspace roots, m
 
 If a harness exposes no safe local-filesystem route, the correct integration is a guarded userbot gateway/MCP tool that returns bounded JSON—not copying the private SQLite/session into the agent workspace. A transport grant authorizes access to the tool only; Telegram mutations still require the normal exact preview and explicit owner approval.
 
+## Execution handles and terminal state
+
+Treat every started command as an owned lifecycle, not as a fire-and-forget shell call:
+
+1. `started` becomes `running` when the execution host returns a session ID, cell ID, process handle, or equivalent continuation token;
+2. keep that exact handle and continue waiting or polling until the host reports an exit status;
+3. if the request is replaced, cancelled, or timed out, terminate through that handle and wait again until the process is reaped;
+4. only then may another gateway/direct helper acquire the same account session.
+
+A yield, partial stdout, progress line, or truncated output does not imply exit. Do not launch the command again merely because final JSON was not shown: first resume the existing handle or terminate and reap it. A successful userbot operation needs both a final structured result and an observed process exit.
+
+`scripts/userbotrun.py` creates the module in its own process group, holds the account lock for the complete child lifetime, and handles `SIGHUP`, `SIGINT`, and `SIGTERM` by unwinding through cleanup. Its escalation order is graceful `SIGINT`, then `SIGTERM`, then `SIGKILL`; the lock is released only after cleanup has been attempted. Stop the runner through the execution host rather than signalling a guessed module PID.
+
+After a host crash, forced `SIGKILL`, or lost execution handle, recovery is diagnostic rather than optimistic: resolve the exact runner/module command and account, confirm whether that owner still exists, stop only that verified stale owner if necessary, then confirm the account lock is acquirable before retrying. Never use a broad process-name kill or start a competing Telethon client.
+
 ## Failure handling
 
 If a supposedly permitted canonical command still returns `PermissionError`, `Operation not permitted`, a blocked Unix socket, or denied DNS/network access:
