@@ -88,7 +88,7 @@ Do not invoke a direct helper bare while any gateway owns the session.
 | `send_message.py` | Dry-run validates the target and optional `--reply-to`; `--execute` sends and verifies text and reply parent. |
 | `send_photo.py` | Dry-run verifies one local image and target; `--execute` sends and reads the message back. |
 | `richtext.py` | Validates allowlisted Telegram HTML; `--execute` edits one owned message and verifies text/entities. |
-| `rich_article.py` | Publishes one structured Rich Message article to a broadcast channel through Telethon's `rich_message` field. Accepts Rich HTML or Rich Markdown, defaults to dry-run, blocks recent same-title duplicates, and verifies the returned rich blocks. |
+| `rich_article.py` | Publishes one structured Rich Message article to a broadcast channel through Telethon's `rich_message` field. Accepts Rich HTML or Rich Markdown and local photo/video/audio/document bindings via repeated `--media ID:KIND:PATH`; defaults to dry-run, blocks recent same-title duplicates, and verifies the returned rich blocks and embedded attachments. |
 | `message_edit.py` | Dry-run by default; edits one of the owner’s outgoing messages only, with exact read-back. Supports inline custom emoji through `--parse-mode html`. |
 | `forward_messages.py` | Dry-run freezes source message IDs and previews both peers; `--execute` forwards those exact IDs and reads destination messages back. |
 | `create_emoji_pack.py` | Dry-run renders one exact text emoji and freezes an available short name; `--execute` creates the custom emoji pack and reads back title, count, emoji mapping, and document. |

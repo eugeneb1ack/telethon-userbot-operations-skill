@@ -9,10 +9,10 @@ Read this reference before drafting or publishing an article with headings, para
 | Need | Route |
 | --- | --- |
 | Bold, code, a simple link, or a small quote inside an ordinary existing message | `richtext.py` with Telegram HTML entities |
-| A new structured article with headings, paragraphs, block quotations and document links | `rich_article.py` with Rich HTML or Rich Markdown |
+| A new structured article with headings, paragraphs, block quotations and embedded local files | `rich_article.py` with Rich HTML or Rich Markdown |
 | Edit an already published rich article | Extend the article module only after checking current Telethon and Telegram API support; do not force it through `richtext.py` |
 
-`rich_article.py` is channel-only by design. It defaults to a dry run, verifies that the target is a broadcast channel, checks a bounded recent window for a matching visible title, and on execution checks that Telegram returned a non-empty `rich_message` with the requested title.
+`rich_article.py` is channel-only by design. It defaults to a dry run, verifies that the target is a broadcast channel, checks a bounded recent window for a matching visible title, and on execution checks that Telegram returned a non-empty `rich_message` with the requested title. Local media is uploaded with `messages.uploadMedia` and attached to the same `InputRichMessageHTML` or `InputRichMessageMarkdown` through its `files` field; it is never sent as a neighbouring Telegram post.
 
 ## Article composition
 
@@ -32,6 +32,33 @@ Prefer Rich HTML for generated articles because block boundaries are explicit. U
 <footer>Источник проверен: 2026-08-26</footer>
 ```
 
+## Embedded local media
+
+For a local image, video, audio track, or document, put a Rich media block in the article and pass one matching `--media ID:KIND:PATH` value. The `ID` is a local binding key, not a Telegram file ID. It is 1-64 characters of `A-Z`, `a-z`, `0-9`, `_` or `-`.
+
+```html
+<h1>Заголовок</h1>
+<p>Короткий лид.</p>
+<figure>
+  <img src="tg://photo?id=cover">
+  <figcaption>Обложка<cite>BitFlip</cite></figcaption>
+</figure>
+<audio src="tg://audio?id=interview"></audio>
+<video src="tg://video?id=demo"></video>
+<tg-document src="tg://document?id=report"></tg-document>
+```
+
+```bash
+venv/bin/python scripts/userbotrun.py --account main modules/rich_article.py \
+  --chat '<channel>' --title '<title>' --file '<article.html>' --format html \
+  --media 'cover:photo:/absolute/path/cover.png' \
+  --media 'interview:audio:/absolute/path/interview.m4a' \
+  --media 'demo:video:/absolute/path/demo.mp4' \
+  --media 'report:document:/absolute/path/report.pdf'
+```
+
+The module records file size, MIME type and SHA-256 in the dry-run. It rejects unknown links, an ID/kind mismatch, duplicate IDs, missing files, or a declared file that does not appear in the article. Photo, video and audio kinds must match the local MIME type; a document may use any ordinary file type. At execution it uploads the exact local files named in the reviewed command to the target chat without posting them, passes the resulting `InputRichFilePhoto` or `InputRichFileDocument` bindings in one rich-message request, then re-reads the sent message and checks that each expected attachment occurs in `rich_message.photos` or `rich_message.documents`.
+
 Use one `<h1>` for the article title. Follow it with `<p>` blocks. Add `<h2>` or lower headings only when they divide genuinely separate material. A short title, lead, two or three paragraphs, one quotation if it carries information, and labelled sources are usually enough for a news post.
 
 ## Rich HTML surface
@@ -44,7 +71,7 @@ The module passes documented Rich HTML through to Telegram. Its local parser rej
 - Structure: `<ul>`, `<ol>`, `<li>`, checkbox `<input type="checkbox">`, `<blockquote>`, `<blockquote expandable>`, `<aside>`, `<details>` and `<summary>`.
 - Advanced blocks: `<table>`, `<tg-math-block>`, media `<img>`/`<video>`/`<audio>`/`<tg-document>`, `<figure>`/`<figcaption>`, `<tg-collage>`, `<tg-slideshow>`, `<tg-map>`, and Rich Message buttons.
 
-Media, buttons, maps and raw `blocks` require extra target-specific authority and richer verification. Do not insert a remote URL merely to decorate an article. For the text-only article module, prefer headings, paragraphs, quotations, lists, labelled links, anchors and details. Extend media or button handling as a separate module update with its own tests and explicit owner request.
+The module supports local media bindings for `<img>`, `<video>`, `<audio>` and `<tg-document>` as described above. Do not insert a remote URL merely to decorate an article. Buttons, maps and raw `blocks` remain outside this guarded publishing route and need their own target-specific update and tests.
 
 ## Limits and writing discipline
 
@@ -56,9 +83,10 @@ Use labelled hyperlinks, for example `<a href="https://openai.com/webmcp-challen
 
 1. Write the full Rich HTML or Rich Markdown file and extract one exact visible title.
 2. Run `rich_article.py` without `--execute`. Inspect target type/title, source hash, format, duplicate result and planned rich constructor.
-3. Obtain explicit owner authorization for the exact final article. A direct instruction to publish that article is authorization; a request to draft is not.
-4. Run the identical command with `--execute`.
-5. Accept success only when server read-back says: matching message ID, outgoing message, `has_rich_message=true`, positive block count, and `title_present=true`.
+3. If there is local media, inspect every frozen `--media` entry and the matching `tg://…?id=…` source block; the dry-run must show the same IDs and kinds.
+4. Obtain explicit owner authorization for the exact final article. A direct instruction to publish that article is authorization; a request to draft is not.
+5. Run the identical command with `--execute`.
+6. Accept success only when server read-back says: matching message ID, outgoing message, `has_rich_message=true`, positive block count, `title_present=true`, and every declared local attachment is present inside the returned rich message.
 
 Official references:
 
