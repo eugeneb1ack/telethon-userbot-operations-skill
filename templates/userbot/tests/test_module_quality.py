@@ -8,10 +8,21 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.check_module import analyze_source
+from scripts.check_module import analyze_source, run_checks_parallel
 
 
 class ModuleQualityTests(unittest.TestCase):
+    def test_parallel_checks_preserve_command_order(self) -> None:
+        commands = [
+            [sys.executable, "-c", f"print({value!r})"]
+            for value in ("first", "second", "third")
+        ]
+        results = run_checks_parallel(commands, cwd=ROOT, timeout=10, workers=3)
+        self.assertEqual(
+            [result["output"].strip() for result in results],
+            ["first", "second", "third"],
+        )
+
     def test_rejects_interactive_client_start(self) -> None:
         source = """
 def register(client):

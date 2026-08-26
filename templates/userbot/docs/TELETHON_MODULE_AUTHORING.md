@@ -25,7 +25,7 @@
 
 Если операция здесь — остановись и объясни риск. Не пиши “универсальный raw request runner”.
 
-## 1. Проверь API, не вспоминай его
+## 1. Собери authoring context, не вспоминай API
 
 Используем Telethon, реально установленный в проекте. Его версия и сигнатуры — источник истины.
 
@@ -34,20 +34,18 @@ cd "${USERBOT_ROOT:?set USERBOT_ROOT to the userbot project}"
 PY="${USERBOT_PY:-venv/bin/python}"
 SKILL=${USERBOT_SKILL_DIR:?set USERBOT_SKILL_DIR to the installed userbot skill}
 
-# Точная сигнатура raw-запроса + официальная TL-ссылка
-$PY "$SKILL/scripts/telethon_api_inventory.py" \
-  --request messages.EditMessageRequest
-
-# Все запросы нужной семьи
-$PY "$SKILL/scripts/telethon_api_inventory.py" \
-  --namespace stickers --json
-
-# High-level методы TelegramClient
-$PY "$SKILL/scripts/telethon_api_inventory.py" \
-  --client --query forward_messages
+# Реестр + pin/installed version + точные сигнатуры + официальные ссылки
+$PY "$SKILL/scripts/telethon_authoring_context.py" \
+  --project-root "$USERBOT_ROOT" --query '<исходный запрос>' \
+  --client-method edit_message \
+  --raw-request messages.EditMessageRequest --json
 ```
 
-После inventory открой указанную официальную страницу `tl.telethon.dev` или `docs.telethon.dev`. Не выдумывай поля constructor-а, права админа, типы реакций или ошибку “по памяти”.
+Если точный API ещё не выбран, сначала не указывай `--client-method`/`--raw-request`, затем перезапусти packet с выбранной поверхностью. При `use_existing_operation` не пиши новый модуль; при `clarify_before_coding` уточни запрос; при `resolve_version_alignment_before_coding` или `resolve_api_surface_before_coding` сначала устрани блокер; пиши код только при `author_one_focused_operation`.
+
+Требуй `telethon.version_match=true`. После packet открой указанную официальную страницу `tl.telethon.dev` или `docs.telethon.dev` и проверь, что заголовок документации соответствует `installed_version`. Не смешивай stable v1 с v2/development и не выдумывай поля constructor-а, права админа, типы реакций или ошибки «по памяти».
+
+Если задачу полностью покрывает документированный high-level метод `TelegramClient`, предпочитай его raw TL: у friendly methods выше гарантия совместимости. Для истории и поиска передавай поддерживаемые фильтры (`from_user`, `search`, `filter`) в `iter_messages`: Telethon использует server-side search там, где Telegram это поддерживает, а в private chat может оставить локальную sender-проверку. Клиентская проверка модуля остаётся safety assertion. Перед сочетанием фильтров проверяй установленную реализацию; не комбинируй их с forum `reply_to`.
 
 ## 2. Сначала проверь, не существует ли функция
 
@@ -242,7 +240,7 @@ venv/bin/python scripts/userbot_module_registry.py --validate-catalog --json
 venv/bin/python scripts/check_module.py modules/<name>.py --full
 ```
 
-`check_module.py --full` проверяет AST-контракт, регистрацию, CLI help, focused tests, полный suite и `pip check` без реальной записи в Telegram. Если gate падает, модуль не готов.
+`check_module.py --full` проверяет AST-контракт, регистрацию, CLI help, focused tests, полный suite и `pip check` без реальной записи в Telegram. Независимые offline `--help` проверки выполняются параллельно, но ни одна не пропускается. Если gate падает, модуль не готов.
 
 ## Copy-paste task prompt for a weaker model
 
@@ -250,12 +248,16 @@ venv/bin/python scripts/check_module.py modules/<name>.py --full
 Implement exactly one new guarded Telethon userbot module in
 $USERBOT_ROOT/modules/<name>.py.
 
-First inspect current project modules and query the installed Telethon API with:
+First build one context packet for the original request and exact candidate API with:
 PY=venv/bin/python
 SKILL=${USERBOT_SKILL_DIR:?set USERBOT_SKILL_DIR to the installed userbot skill}
-$PY "$SKILL/scripts/telethon_api_inventory.py" --request <namespace.Request>
+$PY "$SKILL/scripts/telethon_authoring_context.py" --project-root "$USERBOT_ROOT" \
+  --query '<original request>' --client-method '<method>' \
+  --raw-request '<namespace.Request>' --json
 
 Follow docs/TELETHON_MODULE_AUTHORING.md exactly.
+Require a matching installed/project Telethon version and confirm the official docs header matches it.
+Prefer a documented high-level TelegramClient method and server-side filters when they cover the task.
 Use core.config and core.telegram_targets; never hard-code credentials or call client.start().
 Default must be dry-run. Telegram writes only with --execute after an exact target/ID plan.
 Handle FloodWait once, read back final server state, return JSON, add fake-client tests, update MODULES.md,

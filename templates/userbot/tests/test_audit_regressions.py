@@ -200,6 +200,33 @@ class NativeTranscriptionQueueTests(unittest.TestCase):
 
 
 class PurgeSafetyTests(unittest.TestCase):
+    def test_excluded_full_page_does_not_hide_older_messages(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.offsets: list[int] = []
+
+            async def iter_messages(self, _entity, *, offset_id=0, limit=None, **_kwargs):
+                self.offsets.append(offset_id)
+                if limit is None:
+                    return
+                if offset_id == 0:
+                    yield SimpleNamespace(id=10, out=True)
+                elif offset_id == 10:
+                    yield SimpleNamespace(id=9, out=True)
+
+        client = FakeClient()
+        stats = asyncio.run(
+            purge_me.purge_my_messages(
+                client,
+                object(),
+                execute=False,
+                exclude_message_ids={10},
+                search_chunk_size=1,
+            )
+        )
+        self.assertEqual(stats.checked, 1)
+        self.assertEqual(client.offsets[:3], [0, 10, 9])
+
     def test_execute_deletes_only_outgoing_messages_and_verifies_remaining(self) -> None:
         class FakeClient:
             def __init__(self) -> None:

@@ -31,6 +31,8 @@ REQUIRED = (
     "references/session-bootstrap.md",
     "scripts/bootstrap_userbot_project.py",
     "scripts/telethon_api_inventory.py",
+    "scripts/telethon_authoring_context.py",
+    "scripts/test_telethon_authoring_context.py",
     "scripts/verify_userbot_session.py",
     "scripts/test_bootstrap_userbot_project.py",
     "scripts/test_interactive_account_setup.py",

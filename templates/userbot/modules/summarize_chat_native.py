@@ -137,6 +137,19 @@ async def _resolve_entity(client: TelegramClient, chat: str | int) -> Any:
         raise ValueError(f"chat {chat} was not found in the authorized account dialogs")
 
 
+async def _server_sender_filter(
+    client: TelegramClient, sender_id: int | None, topic_id: int | None
+) -> Any | None:
+    if sender_id is None or topic_id is not None:
+        return None
+    try:
+        return await client.get_input_entity(sender_id)
+    except (TypeError, ValueError):
+        # The numeric sender may not yet have an access hash in the local
+        # entity cache. Fall back to the bounded client-side assertion.
+        return None
+
+
 def _day_bounds(day: date) -> tuple[datetime, datetime]:
     start_local = datetime.combine(day, time.min, tzinfo=LOCAL_TZ)
     end_local = start_local + timedelta(days=1)
@@ -156,6 +169,12 @@ async def _collect_messages(
 ) -> list[dict[str, Any]]:
     raw: list[Message] = []
     iterator_options: dict[str, Any] = {"limit": limit, "reply_to": topic_id}
+    # Telethon maps from_user to Telegram's server-side messages.Search filter.
+    # Forum reply collection does not support that filter, so topic scans keep
+    # the defensive client-side sender check below.
+    sender_filter = await _server_sender_filter(client, sender_id, topic_id)
+    if sender_filter is not None:
+        iterator_options["from_user"] = sender_filter
     if end_utc is not None:
         iterator_options["offset_date"] = end_utc
     if min_id is not None:
@@ -300,6 +319,9 @@ async def _collect_recent_markers(
 ) -> list[dict[str, Any]]:
     markers: list[dict[str, Any]] = []
     iterator_options: dict[str, Any] = {"limit": None, "reply_to": topic_id}
+    sender_filter = await _server_sender_filter(client, sender_id, topic_id)
+    if sender_filter is not None:
+        iterator_options["from_user"] = sender_filter
     if end_utc is not None:
         iterator_options["offset_date"] = end_utc
     async for message in client.iter_messages(entity, **iterator_options):

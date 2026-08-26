@@ -67,7 +67,7 @@ async def purge_my_messages(
     exclude_message_ids: set[int] | None = None,
     search_chunk_size: int = 100,
     delete_chunk_size: int = 100,
-    search_pause_seconds: float = 0.4,
+    search_pause_seconds: float = 0.0,
     delete_pause_seconds: float = 1.0,
 ) -> PurgeStats:
     """Plan or delete only this account's outgoing messages in one chat."""
@@ -75,16 +75,22 @@ async def purge_my_messages(
     checked = deleted = batches = 0
     excluded = exclude_message_ids or set()
     search_flood_retries = 0
+    search_offset_id = 0
 
     while True:
         current_batch: list[int] = []
+        scanned_count = 0
+        last_scanned_id = search_offset_id
         try:
             async for msg in client.iter_messages(
                 entity,
                 from_user="me",
                 limit=search_chunk_size,
-                offset_id=(message_ids[-1] if message_ids else 0),
+                offset_id=search_offset_id,
             ):
+                scanned_count += 1
+                if getattr(msg, "id", None):
+                    last_scanned_id = int(msg.id)
                 if getattr(msg, "id", None) and getattr(msg, "out", False) and msg.id not in excluded:
                     current_batch.append(msg.id)
         except FloodWaitError as exc:
@@ -100,15 +106,25 @@ async def purge_my_messages(
             logger.exception("RPC error while searching; refusing to delete a partial plan")
             return PurgeStats(checked=checked, deleted=0, batches=batches, failed_batches=1)
 
-        if not current_batch:
+        if not scanned_count:
             break
+        if last_scanned_id == search_offset_id:
+            logger.error("Search page had no usable message IDs; refusing to loop")
+            return PurgeStats(
+                checked=checked,
+                deleted=0,
+                batches=batches,
+                failed_batches=1,
+            )
+        search_offset_id = last_scanned_id
         checked += len(current_batch)
         message_ids.extend(current_batch)
         batches += 1
         logger.info("Found %s of your messages so far", len(message_ids))
-        if len(current_batch) < search_chunk_size:
+        if scanned_count < search_chunk_size:
             break
-        await asyncio.sleep(search_pause_seconds)
+        if search_pause_seconds > 0:
+            await asyncio.sleep(search_pause_seconds)
 
     if not execute:
         return PurgeStats(checked=checked, deleted=0, batches=batches)

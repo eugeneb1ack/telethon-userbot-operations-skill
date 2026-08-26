@@ -5,9 +5,19 @@ This guide is written so a smaller coding model can implement one Telethon userb
 ## Before touching code
 
 1. Read the project’s `AGENTS.md`, `MODULES.md`, `core/config.py`, and the closest existing module/test.
-2. Run the local module registry with `--json`. Use `status=match`; clarify `ambiguous`; treat `no_match` candidates as advisory only.
-3. Query the installed API inventory for the exact request/method signature.
-4. Read the official URL returned by inventory.
+2. Run one authoring preflight through the runtime interpreter:
+
+   ```bash
+   "$USERBOT_PY" "$USERBOT_SKILL_DIR/scripts/telethon_authoring_context.py" \
+     --project-root "$USERBOT_ROOT" --query '<request>' \
+     --client-method '<high_level_method>' \
+     --raw-request '<namespace.Request>' --json
+   ```
+
+3. Use the packet decision: reuse an existing operation, clarify ambiguity, resolve version/API-surface blockers, or author exactly one missing operation. Rerun after selecting the exact API surface if it was initially unknown.
+4. Require `telethon.version_match=true`. Treat the installed signatures as the runtime contract, open each returned official URL, and confirm the documentation header matches `installed_version`. Do not mix stable v1 code with v2/development docs.
+
+Prefer a documented high-level `TelegramClient` method over raw TL when both cover the operation. High-level methods have the stronger compatibility guarantee. For history/search work, pass supported filters such as `from_user`, `search`, and `filter` into `iter_messages`; do not download a broad history merely to discard most rows in Python. Telethon uses server-side search where Telegram supports it, but keeps a local sender check in private chats and documents/implements restrictions on some combinations. Keep client-side validation as a safety assertion and inspect the installed method before combining filters or using forum `reply_to`.
 
 ## One feature, one file
 
@@ -117,9 +127,9 @@ Implement exactly one guarded Telethon userbot module.
 
 1. Run the local registry first. Use only status=match; clarify ambiguous; author only after no_match is confirmed.
 2. Read AGENTS.md, MODULES.md, core/config.py, the closest module/test, and this guide.
-3. Inspect the exact installed Telethon API using telethon_api_inventory.py and open its official URL.
+3. Run telethon_authoring_context.py for the original request and exact candidate method/request. Require a matching project pin, inspect the installed signature, and open its official URL.
 4. Use central config and existing authorized sessions; never client.start() or hard-code credentials.
 5. Default to dry-run. Telegram writes need --execute after a precise target/ID plan.
 6. Handle FloodWait once, re-read actual final state, add fake-client tests, update MODULES.md and registry.
-7. Run the registry validator and check_module.py --full. Do not use a real Telegram write during verification.
+7. Run the registry validator and check_module.py --full. Its independent module-help checks are parallelized, but the full suite and dependency checks remain mandatory. Do not use a real Telegram write during verification.
 ```

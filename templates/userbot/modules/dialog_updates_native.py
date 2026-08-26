@@ -80,6 +80,7 @@ async def _collect_bounded(
     sender_id: int,
     min_id: int | None,
     scan_limit: int,
+    detect_overflow: bool = True,
 ) -> tuple[list[dict[str, Any]], bool]:
     records = await _collect_messages(
         client,
@@ -87,10 +88,10 @@ async def _collect_bounded(
         start_utc=None,
         end_utc=None,
         sender_id=sender_id,
-        limit=scan_limit + 1,
+        limit=scan_limit + 1 if detect_overflow else scan_limit,
         min_id=min_id,
     )
-    overflow = len(records) > scan_limit
+    overflow = detect_overflow and len(records) > scan_limit
     return records[:scan_limit], overflow
 
 
@@ -140,19 +141,27 @@ async def collect_dialog_updates(
     else:
         raise ValueError(f"unsupported mode: {mode}")
 
+    latest_limit = latest_count or 1
+    if mode == "latest" and (latest_limit <= 0 or latest_limit > scan_limit):
+        raise ValueError("latest count must be between 1 and scan_limit")
+    # For mixed content, the latest sender rows are also the latest matching
+    # rows, so fetching exactly N is sufficient. A content-specific request
+    # must retain the bounded history scan: a newer text row must not hide an
+    # older voice row (or vice versa).
+    initial_scan_limit = (
+        latest_limit if mode == "latest" and content == "all" else scan_limit
+    )
     records, overflow = await _collect_bounded(
         client,
         entity,
         sender_id=sender_id,
         min_id=anchor_id,
-        scan_limit=scan_limit,
+        scan_limit=initial_scan_limit,
+        detect_overflow=mode != "latest",
     )
     records = [record for record in records if _matches_content(record, content)]
     if mode == "latest":
-        count = latest_count or 1
-        if count <= 0 or count > scan_limit:
-            raise ValueError("latest count must be between 1 and scan_limit")
-        records = records[-count:]
+        records = records[-latest_limit:]
 
     if overflow:
         return {

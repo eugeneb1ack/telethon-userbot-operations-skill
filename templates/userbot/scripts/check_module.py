@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
@@ -217,6 +218,21 @@ def run_check(command: list[str], *, cwd: Path, timeout: int) -> dict[str, objec
     }
 
 
+def run_checks_parallel(
+    commands: list[list[str]], *, cwd: Path, timeout: int, workers: int = 4
+) -> list[dict[str, object]]:
+    """Run independent offline checks concurrently while preserving order."""
+    if not commands:
+        return []
+    worker_count = min(max(1, workers), len(commands))
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = [
+            executor.submit(run_check, command, cwd=cwd, timeout=timeout)
+            for command in commands
+        ]
+        return [future.result() for future in futures]
+
+
 def validate_module(project_root: Path, module: Path, *, full: bool) -> dict[str, object]:
     root = project_root.resolve()
     modules_dir = root / "modules"
@@ -293,14 +309,14 @@ def validate_module(project_root: Path, module: Path, *, full: bool) -> dict[str
                 timeout=120,
             )
         )
-        for candidate in sorted(modules_dir.glob("*.py")):
-            if candidate.name.startswith("__"):
-                continue
-            checks.append(
-                run_check([sys.executable, str(candidate), "--help"], cwd=root, timeout=10)
-            )
-            if checks[-1]["returncode"] != 0:
-                break
+        help_commands = [
+            [sys.executable, str(candidate), "--help"]
+            for candidate in sorted(modules_dir.glob("*.py"))
+            if not candidate.name.startswith("__")
+        ]
+        checks.extend(
+            run_checks_parallel(help_commands, cwd=root, timeout=10, workers=4)
+        )
         if all(item["returncode"] == 0 for item in checks):
             checks.extend(
                 [

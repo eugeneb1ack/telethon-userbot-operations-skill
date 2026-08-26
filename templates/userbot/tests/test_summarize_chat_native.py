@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +17,75 @@ from modules import summarize_chat_native, transcribe_audio_native
 
 
 class NativeSummaryFocusedTests(unittest.TestCase):
+    def test_sender_filter_is_pushed_to_telethon_for_regular_chat(self) -> None:
+        class FakeMessage:
+            id = 10
+            date = summarize_chat_native.datetime(
+                2026, 1, 1, tzinfo=summarize_chat_native.timezone.utc
+            )
+            sender_id = 7
+            action = None
+            out = False
+            reply_to_msg_id = None
+            message = "hello"
+            voice = video_note = audio = photo = video = False
+            document = None
+
+            async def get_sender(self):
+                return SimpleNamespace(
+                    id=7, first_name="User", last_name=None, username="user"
+                )
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.options = None
+
+            async def get_input_entity(self, value):
+                return value
+
+            async def iter_messages(self, _entity, **options):
+                self.options = options
+                yield FakeMessage()
+
+        client = FakeClient()
+        records = asyncio.run(
+            summarize_chat_native._collect_messages(
+                client,
+                object(),
+                start_utc=None,
+                end_utc=None,
+                sender_id=7,
+            )
+        )
+        self.assertEqual(client.options["from_user"], 7)
+        self.assertEqual([item["id"] for item in records], [10])
+
+    def test_topic_collection_keeps_sender_filter_client_side(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.options = None
+
+            async def get_input_entity(self, value):
+                return value
+
+            async def iter_messages(self, _entity, **options):
+                self.options = options
+                if False:
+                    yield None
+
+        client = FakeClient()
+        asyncio.run(
+            summarize_chat_native._collect_recent_markers(
+                client,
+                object(),
+                start_utc=None,
+                end_utc=None,
+                sender_id=7,
+                topic_id=42,
+            )
+        )
+        self.assertNotIn("from_user", client.options)
+
     def test_queue_is_fifo_and_writes_one_completion_event_per_record(self) -> None:
         records = [
             {"id": index, "kind": "voice", "author": {"id": 7}, "transcription": None}

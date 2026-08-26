@@ -109,17 +109,20 @@ Treat three states as separate: structured summary memory provides semantic cont
 
 Read `references/module-authoring.md` before changing code.
 
-1. Inspect `AGENTS.md`, `MODULES.md`, the closest module/test, and central config/target helpers.
-2. Inspect the installed Telethon signature and official URL:
+1. Build one offline authoring packet. It queries the registry, checks the runtime Telethon pin against the installed package, and returns exact high-level/raw signatures plus official URLs without opening a Telegram session:
 
    ```bash
-   "$USERBOT_PY" "$USERBOT_SKILL_DIR/scripts/telethon_api_inventory.py" \
-     --request messages.EditMessageRequest
+   "$USERBOT_PY" "$USERBOT_SKILL_DIR/scripts/telethon_authoring_context.py" \
+     --project-root "$USERBOT_ROOT" --query '<request>' \
+     --client-method edit_message --raw-request messages.EditMessageRequest --json
    ```
 
-3. Add or minimally extend one focused module. Do not create a generic raw-request runner.
+   Use `decision=use_existing_operation`; clarify `clarify_before_coding`; resolve version or API blockers for `resolve_version_alignment_before_coding` / `resolve_api_surface_before_coding`; author only for `author_one_focused_operation`. Omit an API flag until the exact surface is known, then rerun the packet. The installed signature is the runtime contract. Open the returned official URL and confirm its page header matches `installed_version`; never silently code against a different stable/v2 branch. Prefer a documented high-level `TelegramClient` method when it covers the operation; use raw TL only for missing capabilities.
+
+2. Inspect the packet's `read_first` files, then the closest module/test. Add or minimally extend one focused operation; do not create a generic raw-request runner.
+3. Pass supported sender/text/media filters to `iter_messages` (`from_user`, `search`, `filter`) instead of scanning large histories in Python. Telethon uses server-side search where Telegram supports it and may retain a local check for private chats. Keep a bounded client-side assertion in the module. Verify filter combinations against the installed implementation; do not combine them with forum `reply_to` collection.
 4. Add focused fake-client tests, a registry entry, and `MODULES.md` documentation.
-5. Run the deterministic gate; it validates AST safety, registration, CLI help, focused tests, the full suite, and dependencies:
+5. Run the deterministic gate; it validates AST safety, registration, CLI help, focused tests, the full suite, and dependencies. Independent offline module-help checks run in parallel, but every check remains mandatory:
 
    ```bash
    "$USERBOT_PY" scripts/check_module.py modules/<name>.py --full

@@ -6,13 +6,13 @@
 - `core/config.py`: `.env` parsing and runtime settings validation.
 - `core/module_loader.py`: dynamic loading of command modules from `modules/`.
 - `modules/`: feature modules. Each module is a standalone command plugin (example: `modules/ping.py`).
-- `.env.example`: required environment variables template.
+- `accounts/main.env.example`: generated account-profile example; `ACCOUNT.env.example` is its bootstrap source.
 - `requirements.txt`: runtime dependencies.
 
 ## Build, Test, and Development Commands
 - `python3 -m venv venv && source venv/bin/activate`: create and activate local virtualenv.
 - `pip install -r requirements.txt`: install dependencies.
-- `cp .env.example .env`: initialize local config.
+- `python3 scripts/setup_account.py --account main`: create the account profile interactively in the owner's trusted terminal.
 - `./run.sh`: run the userbot locally через `venv/bin/python`.
 - `./run.sh --account <name>`: run isolated account profile from `accounts/<name>.env`.
 - `python -m py_compile main.py core/*.py modules/*.py`: quick syntax check before commit.
@@ -23,7 +23,7 @@
 - Keep modules small and focused: one command/feature per file in `modules/`.
 - Every module must expose `register(client)` so the loader can attach handlers.
 - Prefer structured logging (`logging.getLogger(__name__)`) over ad-hoc prints for diagnostics.
-- For common reads, use `venv/bin/python scripts/userbotctl.py --account main ...`; it reuses or auto-starts a short-lived gateway through a local Unix socket. Before inventing a module or one-off, run `venv/bin/python scripts/userbot_module_registry.py --query '<natural request>'` and use the single returned command. For genuinely new operations, follow `docs/TELETHON_MODULE_AUTHORING.md` and run `scripts/check_module.py`.
+- For common reads, use `venv/bin/python scripts/userbotctl.py --account main ...`; it reuses or auto-starts a short-lived gateway through a local Unix socket. Before inventing a module or one-off, run `venv/bin/python scripts/userbot_module_registry.py --query '<natural request>'` and use the single returned command. For genuinely new operations, build the installed skill's `telethon_authoring_context.py` packet, follow `docs/TELETHON_MODULE_AUTHORING.md`, and run `scripts/check_module.py`.
 
 ## Testing Guidelines
 - The offline regression suite is `venv/bin/python -m unittest discover -s tests -v`.

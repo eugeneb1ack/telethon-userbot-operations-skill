@@ -77,11 +77,11 @@ flowchart LR
 Если для запроса нет подходящего маршрута, агент должен:
 
 1. Проверить локальный registry. Использовать только уверенный `match`, уточнять `ambiguous`, а кандидатов `no_match` считать подсказкой, не запуская ближайший модуль молча.
-2. Через встроенный offline API inventory изучить точные requests, types и известные RPC errors установленной версии Telethon, а затем открыть выданную им официальную документацию.
+2. Собрать один offline authoring packet: router, pin runtime, точные сигнатуры установленного high-level/raw API и официальные ссылки. Перед кодом проверить, что версия в заголовке документации совпадает с установленной.
 3. Прочитать контракт разработки модулей и реализовать одну конкретную операцию в `modules/`, не создавая универсальный runner произвольных запросов.
 4. Сохранить модель безопасности: валидировать аргументы, запрещать интерактивный login, оставлять write-операции в dry-run по умолчанию, ограничивать timeout и retry, а после выполнения повторно проверять состояние Telegram.
 5. Зарегистрировать операцию в локальном router, описать её в `MODULES.md` и добавить regression-тесты с fake client.
-6. Проверить целостность registry и запустить `scripts/check_module.py modules/<name>.py --full`. Gate проверяет AST-безопасность, регистрацию, CLI help, focused tests, полный suite и зависимости.
+6. Проверить целостность registry и запустить `scripts/check_module.py modules/<name>.py --full`. Gate проверяет AST-безопасность, регистрацию, CLI help, focused tests, полный suite и зависимости; независимые offline `--help` проверки модулей выполняются параллельно.
 
 Исходный код локального userbot runtime меняется только в ответ на конкретный запрос. Навык не изменяет Telegram-сессию, не делает commit, push или release и не расширяет задачу автоматически. Возможности, запрещённые политикой безопасности, остаются запрещёнными, даже если технически присутствуют в Telethon.
 
@@ -199,6 +199,7 @@ telethon-userbot-operations-skill/
 │   ├── bootstrap_userbot_project.py # создаёт только НОВЫЙ runtime
 │   ├── verify_userbot_session.py    # offline / явная online-проверка
 │   ├── telethon_api_inventory.py    # introspection API без сети
+│   ├── telethon_authoring_context.py # router + версия + API packet
 │   └── validate_package.py          # проверка пакета и секретов
 └── templates/userbot/               # чистый шаблон runtime
     ├── core/                         # config, lock, gateway, event + memory stores

@@ -77,11 +77,11 @@ The extension is performed by the connected coding agent using the contract and 
 When a request has no suitable route, the agent must:
 
 1. Query the local registry. Use only a high-confidence `match`, clarify `ambiguous`, and treat `no_match` candidates as advisory rather than silently launching the nearest module.
-2. Inspect the exact installed Telethon requests, types, and known RPC errors with the bundled offline API inventory, then follow the official documentation it returns.
+2. Build one bundled offline authoring packet that combines registry routing, the runtime Telethon pin, exact installed high-level/raw signatures, and official documentation URLs. Confirm that the docs header matches the installed version before coding.
 3. Read the module-authoring contract and implement one focused operation under `modules/` instead of creating a general-purpose request runner.
 4. Preserve the safety model: validate inputs, refuse interactive login, make writes dry-run by default, bound timeouts and retries, and verify the final Telegram state after execution.
 5. Register the operation in the local router, document it in `MODULES.md`, and add fake-client regression tests.
-6. Validate registry consistency and run `scripts/check_module.py modules/<name>.py --full`. The gate checks AST safety, registry membership, CLI help, focused tests, the full suite, and dependencies.
+6. Validate registry consistency and run `scripts/check_module.py modules/<name>.py --full`. The gate checks AST safety, registry membership, CLI help, focused tests, the full suite, and dependencies; independent offline module-help checks run in parallel.
 
 This changes source code in the local userbot runtime in response to a concrete request. It does not modify the Telegram session, commit or push code, publish a release, or broaden the operation beyond the request automatically. Capabilities excluded by the security policy remain excluded even if Telethon technically exposes them.
 
@@ -199,6 +199,7 @@ telethon-userbot-operations-skill/
 │   ├── bootstrap_userbot_project.py # creates a NEW runtime only
 │   ├── verify_userbot_session.py    # offline / explicit online readiness check
 │   ├── telethon_api_inventory.py    # zero-network API introspection
+│   ├── telethon_authoring_context.py # registry + version + API authoring packet
 │   └── validate_package.py          # package and secret-boundary validation
 └── templates/userbot/               # secret-free runtime source template
     ├── core/                         # config, locking, gateway, event + memory stores

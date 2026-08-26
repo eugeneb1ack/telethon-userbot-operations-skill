@@ -1,6 +1,6 @@
 # Operation Playbook
 
-Use this reference only after the local userbot registry has no matching module. First inspect the exact installed Telethon constructor with `scripts/telethon_api_inventory.py`, then open the official URL it prints.
+Use this reference only after `scripts/telethon_authoring_context.py` returns `decision=author_one_focused_operation`. Require its runtime pin to match the installed Telethon package, inspect the exact high-level/raw signature, then open the official URL it returns and confirm the documentation header matches that installed version.
 
 ## Profile, identity and privacy
 

@@ -14,9 +14,13 @@ import re
 import sys
 from collections import defaultdict
 from importlib.metadata import version
+from pathlib import Path
 
 from telethon import TelegramClient
 from telethon.tl import functions
+
+
+TELETHON_PIN_RE = re.compile(r"^\s*telethon\s*==\s*([^\s;#]+)", re.IGNORECASE)
 
 
 def snake_case(name: str) -> str:
@@ -25,6 +29,42 @@ def snake_case(name: str) -> str:
 
 def tl_url(namespace: str, request_name: str) -> str:
     return f"https://tl.telethon.dev/methods/{namespace}/{snake_case(request_name.removesuffix('Request'))}.html"
+
+
+def pinned_telethon_version(project_root: Path | None) -> str | None:
+    if project_root is None:
+        return None
+    requirements = project_root.expanduser().resolve() / "requirements.txt"
+    try:
+        lines = requirements.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        match = TELETHON_PIN_RE.match(line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def documentation_metadata(project_root: Path | None = None) -> dict[str, object]:
+    installed = version("telethon")
+    pinned = pinned_telethon_version(project_root)
+    pin_status = "missing" if pinned is None else "match" if pinned == installed else "mismatch"
+    return {
+        "installed_version": installed,
+        "pinned_version": pinned,
+        "version_match": None if pinned is None else pinned == installed,
+        "pin_status": pin_status,
+        "stable_docs_url": "https://docs.telethon.dev/en/stable/",
+        "client_reference_url": "https://docs.telethon.dev/en/stable/modules/client.html",
+        "tl_reference_url": "https://tl.telethon.dev/",
+        "changelog_url": "https://docs.telethon.dev/en/stable/misc/changelog.html",
+        "policy": (
+            "Require a matching project pin. Treat installed signatures as the runtime "
+            "contract. Open the official URL and confirm the documentation header matches "
+            "installed_version before coding."
+        ),
+    }
 
 
 def request_rows() -> list[dict[str, str]]:
@@ -85,6 +125,11 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--client", action="store_true", help="Query high-level TelegramClient methods")
     result.add_argument("--query", help="Filter by a method/request substring")
     result.add_argument("--all", action="store_true", help="Print matching rows instead of a family summary")
+    result.add_argument(
+        "--project-root",
+        type=Path,
+        help="Optional runtime root whose requirements.txt pin should match the installed package",
+    )
     result.add_argument("--json", action="store_true", help="Emit JSON")
     return result
 
@@ -108,14 +153,31 @@ def main() -> int:
         ]
     rows = [row for row in rows if matches(row, args.query)]
 
+    documentation = documentation_metadata(args.project_root)
     if args.json:
-        print(json.dumps({"telethon_version": version("telethon"), "count": len(rows), "items": rows}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {
+                    "telethon_version": version("telethon"),
+                    "documentation": documentation,
+                    "count": len(rows),
+                    "items": rows,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0
     if not args.all and not args.request and not args.query:
         totals: dict[str, int] = defaultdict(int)
         for row in rows:
             totals[row["namespace"]] += 1
-        print(f"Telethon {version('telethon')}; {sum(totals.values())} matching {('client methods' if args.client else 'raw requests')}")
+        pin = documentation["pinned_version"]
+        pin_note = f"; project pin {pin}; match={documentation['version_match']}" if pin else ""
+        print(
+            f"Telethon {version('telethon')}{pin_note}; {sum(totals.values())} matching "
+            f"{('client methods' if args.client else 'raw requests')}"
+        )
         for namespace, count in sorted(totals.items()):
             print(f"{namespace}: {count}")
         print("Use --namespace, --request, --query, or --all.")

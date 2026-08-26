@@ -21,6 +21,98 @@ def record(message_id: int, kind: str = "text") -> dict:
 
 
 class DialogUpdatesTests(unittest.TestCase):
+    def test_latest_collects_only_requested_sender_count_before_tail_check(self) -> None:
+        calls: list[dict] = []
+
+        async def fake_collect(*_args, **kwargs):
+            calls.append(kwargs)
+            return ([record(10)], False) if len(calls) == 1 else ([], False)
+
+        async def fake_transcribe(*_args, **_kwargs):
+            return None
+
+        with tempfile.TemporaryDirectory() as tmp, DialogCursorStore(
+            Path(tmp) / "memory.sqlite3"
+        ) as store, patch.object(
+            dialog_updates_native, "_resolve_entity", return_value=SimpleNamespace(id=42)
+        ), patch.object(
+            dialog_updates_native, "_chat_id", return_value=42
+        ), patch.object(
+            dialog_updates_native, "_collect_bounded", side_effect=fake_collect
+        ), patch.object(
+            dialog_updates_native, "_transcribe_records", side_effect=fake_transcribe
+        ):
+            result = asyncio.run(
+                dialog_updates_native.collect_dialog_updates(
+                    object(),
+                    account="main",
+                    chat=-10042,
+                    sender_id=7,
+                    mode="latest",
+                    content="all",
+                    latest_count=1,
+                    after_message_id=None,
+                    scan_limit=200,
+                    max_rounds=3,
+                    transcription_timeout=1,
+                    request_timeout=1,
+                    cursor_store=store,
+                )
+            )
+
+        self.assertTrue(result["complete"])
+        self.assertEqual(calls[0]["scan_limit"], 1)
+        self.assertFalse(calls[0]["detect_overflow"])
+        self.assertEqual(calls[1]["scan_limit"], 200)
+
+    def test_latest_voice_keeps_bounded_scan_before_content_filter(self) -> None:
+        calls: list[dict] = []
+
+        async def fake_collect(*_args, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                return [record(9, "voice"), record(10, "text")], False
+            return [], False
+
+        async def fake_transcribe(_client, _chat, records, **_kwargs):
+            for item in records:
+                if item["kind"] == "voice":
+                    item["transcription"] = {"complete": True, "text": "voice-9"}
+
+        with tempfile.TemporaryDirectory() as tmp, DialogCursorStore(
+            Path(tmp) / "memory.sqlite3"
+        ) as store, patch.object(
+            dialog_updates_native, "_resolve_entity", return_value=SimpleNamespace(id=42)
+        ), patch.object(
+            dialog_updates_native, "_chat_id", return_value=42
+        ), patch.object(
+            dialog_updates_native, "_collect_bounded", side_effect=fake_collect
+        ), patch.object(
+            dialog_updates_native, "_transcribe_records", side_effect=fake_transcribe
+        ):
+            result = asyncio.run(
+                dialog_updates_native.collect_dialog_updates(
+                    object(),
+                    account="main",
+                    chat=-10042,
+                    sender_id=7,
+                    mode="latest",
+                    content="voice",
+                    latest_count=1,
+                    after_message_id=None,
+                    scan_limit=200,
+                    max_rounds=3,
+                    transcription_timeout=1,
+                    request_timeout=1,
+                    cursor_store=store,
+                )
+            )
+
+        self.assertTrue(result["complete"])
+        self.assertEqual([item["id"] for item in result["records"]], [9])
+        self.assertEqual(calls[0]["scan_limit"], 200)
+        self.assertFalse(calls[0]["detect_overflow"])
+
     def test_mixed_latest_follows_new_text_and_voice_then_advances_cursor(self) -> None:
         scans = [
             ([record(10)], False),

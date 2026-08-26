@@ -112,6 +112,8 @@ Do not invoke a direct helper bare while any gateway owns the session.
 - The gateway is the preferred single session owner; common reads use its local socket without another Telegram connection.
 - Any Telegram write is dry-run/preview first unless an outgoing command is intentionally typed by the owner in Telegram.
 - New module authors must follow `docs/TELETHON_MODULE_AUTHORING.md`; it is the implementation contract for weaker coding models too.
+- The installed skill's `scripts/telethon_authoring_context.py` combines registry routing, the runtime Telethon pin, exact installed signatures, and official documentation URLs in one offline preflight. A matching pin is required before authoring.
+- Sender-scoped non-topic history passes `from_user` to Telethon. Telethon uses server-side search where Telegram supports it and retains a local sender check for private chats; the module keeps its own bounded assertion. Forum `reply_to` scans retain bounded client-side filtering because that request does not carry the same sender filter.
 
 ## Validation
 
