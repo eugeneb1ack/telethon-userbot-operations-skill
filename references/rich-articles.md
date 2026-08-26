@@ -19,7 +19,7 @@ Read this reference before drafting or publishing an article with headings, para
 Prefer Rich HTML for generated articles because block boundaries are explicit. Use this stable shape unless the material needs a different one:
 
 ```html
-<h1>Точный заголовок</h1>
+<h1>Короткий заголовок с честным крючком</h1>
 <p>Лид с главным фактом и без пересказа анонса.</p>
 <h2>Что изменилось</h2>
 <p>Один самостоятельный абзац.</p>
@@ -39,10 +39,7 @@ For a local image, video, audio track, or document, put a Rich media block in th
 ```html
 <h1>Заголовок</h1>
 <p>Короткий лид.</p>
-<figure>
-  <img src="tg://photo?id=cover">
-  <figcaption>Обложка<cite>BitFlip</cite></figcaption>
-</figure>
+<img src="tg://photo?id=cover">
 <audio src="tg://audio?id=interview"></audio>
 <video src="tg://video?id=demo"></video>
 <tg-document src="tg://document?id=report"></tg-document>
@@ -59,7 +56,13 @@ venv/bin/python scripts/userbotrun.py --account main modules/rich_article.py \
 
 The module records file size, MIME type and SHA-256 in the dry-run. It rejects unknown links, an ID/kind mismatch, duplicate IDs, missing files, or a declared file that does not appear in the article. Photo, video and audio kinds must match the local MIME type; a document may use any ordinary file type. At execution it uploads the exact local files named in the reviewed command to the target chat without posting them, passes the resulting `InputRichFilePhoto` or `InputRichFileDocument` bindings in one rich-message request, then re-reads the sent message and checks that each expected attachment occurs in `rich_message.photos` or `rich_message.documents`.
 
-Use one `<h1>` for the article title. Follow it with `<p>` blocks. Add `<h2>` or lower headings only when they divide genuinely separate material. A short title, lead, two or three paragraphs, one quotation if it carries information, and labelled sources are usually enough for a news post.
+### Media captions and credits
+
+If the owner asks only to attach media, use the bare media block. Do not invent `<figure>`, `<figcaption>`, `<cite>`, image labels, photo credits, channel names or brand names. Generic text such as “Обложка к новости”, “Фото”, “BitFlip” or “Источник: канал” is forbidden as automatic metadata.
+
+Add a caption or credit only when the owner explicitly asks for one. Then it must identify a real, news-relevant detail in the visual or name a supplied/verifiable source. Keep it concise and factual; never use a caption as filler or a place for unrequested author commentary.
+
+Use one `<h1>` for the article title. The title must be a concise, factual hook that makes the news worth opening, rather than a neutral table-of-contents label such as `X и Y: как это работает`. Follow it with `<p>` blocks. Add `<h2>` or lower headings only when they divide genuinely separate material. A short title, lead, two or three paragraphs, one quotation if it carries information, and labelled sources are usually enough for a news post.
 
 ## Rich HTML surface
 
@@ -83,7 +86,7 @@ Use labelled hyperlinks, for example `<a href="https://openai.com/webmcp-challen
 
 1. Write the full Rich HTML or Rich Markdown file and extract one exact visible title.
 2. Run `rich_article.py` without `--execute`. Inspect target type/title, source hash, format, duplicate result and planned rich constructor.
-3. If there is local media, inspect every frozen `--media` entry and the matching `tg://…?id=…` source block; the dry-run must show the same IDs and kinds.
+3. If there is local media, inspect every frozen `--media` entry and the matching `tg://…?id=…` source block; the dry-run must show the same IDs and kinds. If a caption or credit appears, confirm that the owner explicitly requested it and that it identifies real relevant information.
 4. Obtain explicit owner authorization for the exact final article. A direct instruction to publish that article is authorization; a request to draft is not.
 5. Run the identical command with `--execute`.
 6. Accept success only when server read-back says: matching message ID, outgoing message, `has_rich_message=true`, positive block count, `title_present=true`, and every declared local attachment is present inside the returned rich message.
