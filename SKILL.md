@@ -150,6 +150,7 @@ Do not use bootstrap as an updater. For an existing runtime, apply reviewed sour
 - `references/gateway-webhooks.md`: gateway, event retention, webhook delivery.
 - `references/session-bootstrap.md`: safe account/session onboarding.
 - `references/channel-rich-publishing.md`: approved rich channel publishing.
+- `references/rich-articles.md`: structured Rich Message articles. Read before writing or publishing headings, paragraphs, source links, quotations, lists, tables, collapsible details, formulas, or anchors through `rich_article.py`.
 - `references/module-authoring.md`: focused self-extension and quality gate.
 
 For custom emoji, distinguish inline entities, reactions, profile/channel status, and packs before choosing an API. A sandbox `PermissionError` is an environment policy failure, not evidence that Telegram failed; follow the runtime-access preflight and retry the same canonical route at most once through the narrow native access path. Docker does not bypass the host sandbox or justify copying secret-bearing runtime data.

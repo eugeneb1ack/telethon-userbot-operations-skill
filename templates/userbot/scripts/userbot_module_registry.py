@@ -321,6 +321,22 @@ OPERATIONS = (
         "Dry-run validates markup and ownership; --execute verifies plain text and explicit entities.",
     ),
     Operation(
+        "rich_article",
+        "rich_article.py",
+        "telegram_write",
+        "Publish one structured Telegram Rich Message article to one broadcast channel.",
+        (
+            "rich article",
+            "rich message article",
+            "статья в телеграм",
+            "richtext статья",
+            "telegram статья с заголовками",
+            "опубликуй статью",
+        ),
+        "venv/bin/python scripts/userbotrun.py --account main modules/rich_article.py --chat '<channel>' --title '<visible-title>' --file '<article.html>' --format html",
+        "Dry-run resolves a broadcast channel, checks title duplicates and builds InputRichMessageHTML/Markdown; --execute verifies the returned rich blocks.",
+    ),
+    Operation(
         "forward_messages",
         "forward_messages.py",
         "telegram_write",
