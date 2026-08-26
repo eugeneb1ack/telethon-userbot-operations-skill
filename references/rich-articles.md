@@ -24,12 +24,13 @@ Prefer Rich HTML for generated articles because block boundaries are explicit. U
 <h2>Что изменилось</h2>
 <p>Один самостоятельный абзац.</p>
 <blockquote>Короткая цитата или важная оговорка<cite>Источник</cite></blockquote>
-<h2>Ссылки</h2>
-<ul>
-  <li><a href="https://example.com">Официальный анонс</a></li>
-  <li><a href="https://example.com/docs">Документация</a></li>
-</ul>
-<footer>Источник проверен: 2026-08-26</footer>
+<details>
+  <summary>Источники</summary>
+  <ul>
+    <li><a href="https://example.com">Официальный анонс</a></li>
+    <li><a href="https://example.com/docs">Документация</a></li>
+  </ul>
+</details>
 ```
 
 ## Embedded local media
@@ -62,7 +63,7 @@ If the owner asks only to attach media, use the bare media block. Do not invent 
 
 Add a caption or credit only when the owner explicitly asks for one. Then it must identify a real, news-relevant detail in the visual or name a supplied/verifiable source. Keep it concise and factual; never use a caption as filler or a place for unrequested author commentary.
 
-Use one `<h1>` for the article title. Build it only after reading the complete fact packet and full article, not from the lead or one striking feature. First identify the event, mechanism, reader consequence, constraint, and every related fact that makes the item newsworthy, such as a launch plus a prize challenge or deadline. Then choose a concise factual hook that represents the editorial promise of the whole article. A title may combine two central facts when the connection is the story; it must not collapse them into a misleading metaphor such as claiming a product “started clicking buttons” when the actual change is a new structured site-tool route. If independent stories cannot fit honestly in one H1, narrow or split the article. Avoid neutral table-of-contents labels such as `X и Y: как это работает`. Follow the H1 with `<p>` blocks. Add `<h2>` or lower headings only when they divide genuinely separate material. A short title, lead, two or three paragraphs, one quotation if it carries information, and labelled sources are usually enough for a news post.
+Use one `<h1>` for the article title. Build it only after reading the complete fact packet and full article, not from the lead or one striking feature. First identify the event, mechanism, reader consequence, constraint, and every related fact that makes the item newsworthy, such as a launch plus a prize challenge or deadline. Then choose a concise factual hook that represents the editorial promise of the whole article. A title may combine two central facts when the connection is the story; it must not collapse them into a misleading metaphor such as claiming a product “started clicking buttons” when the actual change is a new structured site-tool route. If independent stories cannot fit honestly in one H1, narrow or split the article. Avoid neutral table-of-contents labels such as `X и Y: как это работает`. Follow the H1 with `<p>` blocks. Add `<h2>` or lower headings only when they divide genuinely separate material. When an article has reader-facing external sources, use exactly one final `<details><summary>Источники</summary>…</details>` block with labelled links. Do not generate an open `Ссылки` section or a service footer like `Источник проверен: <date>` unless the owner explicitly asks for that metadata. A short title, lead, two or three paragraphs, one quotation if it carries information, and collapsible labelled sources are usually enough for a news post.
 
 ## Rich HTML surface
 
