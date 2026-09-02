@@ -66,9 +66,9 @@ Do not invoke a direct helper bare while any gateway owns the session.
 
 | Module | Role |
 |---|---|
-| `transcribe_audio_native.py` | Native Telegram audio transcription via `messages.TranscribeAudioRequest`. Exact-ID mode stays frozen; `--latest-voice --sender-id ...` performs a live sender-scoped selection, follows one newly arrived voice, and fails closed if the tail moves again. |
-| `dialog_updates_native.py` | Freshness-checked live dialog slices for text, voice, or mixed content. Supports latest-N, unseen-after-cursor, exact anchors, and latest-outgoing anchors; advances an ID-only content cursor only after complete STT and a stable tail check. |
-| `summarize_chat_native.py` | Moscow-time bounded chat collection, queued native STT, atomic archive/progress recovery, and bounded SQLite dialog-summary tables with recent-tail validation, delta collection, and revision-checked commit. |
+| `transcribe_audio_native.py` | Native Telegram audio transcription via `messages.TranscribeAudioRequest`. Exact-ID mode stays frozen; `--latest-voice --sender-id ...` performs a live sender-scoped selection, follows one newly arrived voice, and fails closed if the tail moves again. Telegram `MSG_VOICE_TOO_LONG` failures are returned as explicit `unsupported` results instead of being retried as transient errors. |
+| `dialog_updates_native.py` | Freshness-checked live dialog slices for text, voice, or mixed content. Supports latest-N, unseen-after-cursor, exact anchors, and latest-outgoing anchors; private chats use a bounded scan before exact sender selection, repeated outgoing-anchor requests are capped by the saved delivery cursor, anchor/high-watermark IDs are enforced locally, and the ID-only content cursor advances only after complete STT and a stable tail check. |
+| `summarize_chat_native.py` | Moscow-time bounded chat collection, queued native STT with retry classification, atomic archive/progress recovery, and bounded SQLite dialog-summary tables with recent-tail validation, delta collection, and revision-checked commit. |
 | `count_user_messages.py` | Count one user’s messages for a time window; only `--send` publishes its report. |
 | `comment_channels.py` | List broadcast channels linked to accessible discussion groups where the account wrote reply/comment messages. | Read-only; message text is not returned. |
 | `owned_channels.py` | List broadcast channels created and owned by the current account. |
@@ -88,7 +88,7 @@ Do not invoke a direct helper bare while any gateway owns the session.
 | `send_message.py` | Dry-run validates the target and optional `--reply-to`; `--execute` sends and verifies text and reply parent. |
 | `send_photo.py` | Dry-run verifies one local image and target; `--execute` sends and reads the message back. |
 | `richtext.py` | Validates allowlisted Telegram HTML; `--execute` edits one owned message and verifies text/entities. |
-| `rich_article.py` | Publishes one structured Rich Message article to a broadcast channel through Telethon's `rich_message` field. Accepts Rich HTML or Rich Markdown and local photo/video/audio/document bindings via repeated `--media ID:KIND:PATH`; defaults to dry-run, blocks recent same-title duplicates, and verifies the returned rich blocks and embedded attachments. |
+| `rich_article.py` | Publishes or edits one structured Rich Message article in a broadcast channel through Telethon's `rich_message` field. Accepts Rich HTML or Rich Markdown and local photo/video/audio/document bindings via repeated `--media ID:KIND:PATH`; edit mode preserves existing media by default, while `--replace-media` replaces matching embedded files. All writes default to dry-run and verify the returned rich blocks and attachments. |
 | `message_edit.py` | Dry-run by default; edits one of the owner’s outgoing messages only, with exact read-back. Supports inline custom emoji through `--parse-mode html`. |
 | `forward_messages.py` | Dry-run freezes source message IDs and previews both peers; `--execute` forwards those exact IDs and reads destination messages back. |
 | `create_emoji_pack.py` | Dry-run renders one exact text emoji and freezes an available short name; `--execute` creates the custom emoji pack and reads back title, count, emoji mapping, and document. |
@@ -113,7 +113,7 @@ Do not invoke a direct helper bare while any gateway owns the session.
 - Any Telegram write is dry-run/preview first unless an outgoing command is intentionally typed by the owner in Telegram.
 - New module authors must follow `docs/TELETHON_MODULE_AUTHORING.md`; it is the implementation contract for weaker coding models too.
 - The installed skill's `scripts/telethon_authoring_context.py` combines registry routing, the runtime Telethon pin, exact installed signatures, and official documentation URLs in one offline preflight. A matching pin is required before authoring.
-- Sender-scoped non-topic history passes `from_user` to Telethon. Telethon uses server-side search where Telegram supports it and retains a local sender check for private chats; the module keeps its own bounded assertion. Forum `reply_to` scans retain bounded client-side filtering because that request does not carry the same sender filter.
+- Sender-scoped non-topic history passes `from_user` to Telethon where useful, but private-chat filtering is treated as client-side and the live dialog module scans a bounded window before selecting the sender's latest records. “Unseen/new/unprocessed” routes use the delivery cursor; literal “after my message” routes also honor the newer saved cursor to avoid replay. The module keeps exact sender, anchor, and high-watermark assertions. Forum `reply_to` scans retain bounded client-side filtering because that request does not carry the same sender filter.
 
 ## Validation
 

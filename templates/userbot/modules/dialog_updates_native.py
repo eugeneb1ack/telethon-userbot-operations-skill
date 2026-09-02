@@ -82,7 +82,7 @@ async def _collect_bounded(
     scan_limit: int,
     detect_overflow: bool = True,
 ) -> tuple[list[dict[str, Any]], bool]:
-    records = await _collect_messages(
+    fetched_records = await _collect_messages(
         client,
         entity,
         start_utc=None,
@@ -91,6 +91,14 @@ async def _collect_bounded(
         limit=scan_limit + 1 if detect_overflow else scan_limit,
         min_id=min_id,
     )
+    # Telethon may emulate min_id locally, and private-chat from_user filters
+    # are also client-side. Keep the boundary explicit here so a broken or
+    # ignored iterator bound can never leak older records into the result.
+    records = [
+        record
+        for record in fetched_records
+        if min_id is None or int(record["id"]) > min_id
+    ]
     overflow = detect_overflow and len(records) > scan_limit
     return records[:scan_limit], overflow
 
@@ -110,6 +118,7 @@ async def collect_dialog_updates(
     transcription_timeout: float,
     request_timeout: float,
     cursor_store: DialogCursorStore,
+    transcription_concurrency: int = 2,
 ) -> dict[str, Any]:
     if content not in {"all", "voice", "text"}:
         raise ValueError("content must be all, voice, or text")
@@ -117,6 +126,8 @@ async def collect_dialog_updates(
         raise ValueError("scan_limit must be between 1 and 1000")
     if max_rounds < 1 or max_rounds > 10:
         raise ValueError("max_rounds must be between 1 and 10")
+    if transcription_concurrency < 1 or transcription_concurrency > 4:
+        raise ValueError("transcription_concurrency must be between 1 and 4")
 
     entity = await _resolve_entity(client, chat)
     resolved_chat_id = _chat_id(entity)
@@ -128,12 +139,18 @@ async def collect_dialog_updates(
     )
 
     anchor_id: int | None
+    latest_outgoing_id: int | None = None
     if mode == "latest":
         anchor_id = None
     elif mode == "after_message":
         anchor_id = after_message_id
     elif mode == "after_latest_outgoing":
-        anchor_id = await _latest_outgoing_id(client, entity, scan_limit)
+        latest_outgoing_id = await _latest_outgoing_id(client, entity, scan_limit)
+        # A repeated "after my message" request must not replay records that
+        # this exact dialog/sender/content scope already delivered. Keep the
+        # explicit outgoing anchor, but raise the effective lower bound to
+        # the saved delivery cursor when it is newer.
+        anchor_id = max(latest_outgoing_id, cursor_before or 0)
     elif mode == "unseen":
         if cursor_before is None:
             raise ValueError("no delivery cursor exists; initialize it with --latest")
@@ -144,13 +161,11 @@ async def collect_dialog_updates(
     latest_limit = latest_count or 1
     if mode == "latest" and (latest_limit <= 0 or latest_limit > scan_limit):
         raise ValueError("latest count must be between 1 and scan_limit")
-    # For mixed content, the latest sender rows are also the latest matching
-    # rows, so fetching exactly N is sufficient. A content-specific request
-    # must retain the bounded history scan: a newer text row must not hide an
-    # older voice row (or vice versa).
-    initial_scan_limit = (
-        latest_limit if mode == "latest" and content == "all" else scan_limit
-    )
+    # In private chats Telethon ignores the server-side from_user restriction
+    # and applies it client-side, so limit=N counts both participants. Always
+    # scan a bounded window before selecting the sender's latest N records;
+    # using N here can miss the sender when the other participant wrote last.
+    initial_scan_limit = scan_limit
     records, overflow = await _collect_bounded(
         client,
         entity,
@@ -159,6 +174,8 @@ async def collect_dialog_updates(
         scan_limit=initial_scan_limit,
         detect_overflow=mode != "latest",
     )
+    if anchor_id is not None:
+        records = [record for record in records if int(record["id"]) > anchor_id]
     records = [record for record in records if _matches_content(record, content)]
     if mode == "latest":
         records = records[-latest_limit:]
@@ -182,7 +199,7 @@ async def collect_dialog_updates(
             chat,
             records,
             timeout=transcription_timeout,
-            concurrency=1,
+            concurrency=transcription_concurrency,
             request_timeout=request_timeout,
             retries=1,
         )
@@ -193,6 +210,12 @@ async def collect_dialog_updates(
             and not (record.get("transcription") or {}).get("complete")
         ]
         if incomplete:
+            unsupported = [
+                record["id"]
+                for record in records
+                if record["id"] in incomplete
+                and (record.get("transcription") or {}).get("status") == "unsupported"
+            ]
             return {
                 "status": "incomplete_transcription",
                 "complete": False,
@@ -202,6 +225,7 @@ async def collect_dialog_updates(
                 "cursor_before": cursor_before,
                 "cursor_advanced": False,
                 "incomplete_message_ids": incomplete,
+                "unsupported_message_ids": unsupported,
                 "records": records,
             }
 
@@ -214,6 +238,9 @@ async def collect_dialog_updates(
             scan_limit=scan_limit,
         )
         newer = [record for record in newer if _matches_content(record, content)]
+        # Keep the recheck monotonic even if a client/API iterator returns an
+        # out-of-range record. Never merge anything at or below the watermark.
+        newer = [record for record in newer if int(record["id"]) > high_watermark]
         newer = [record for record in newer if int(record["id"]) not in seen_ids]
         if newer_overflow:
             return {
@@ -318,6 +345,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 transcription_timeout=args.transcription_timeout,
                 request_timeout=args.request_timeout,
                 cursor_store=store,
+                transcription_concurrency=args.transcription_concurrency,
             )
     finally:
         await client.disconnect()
@@ -340,6 +368,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-rounds", type=int, default=3)
     parser.add_argument("--transcription-timeout", type=float, default=300)
     parser.add_argument("--request-timeout", type=float, default=30)
+    parser.add_argument(
+        "--transcription-concurrency",
+        type=int,
+        default=2,
+        help="parallel native transcription workers, from 1 to 4 (default: 2)",
+    )
     parser.add_argument("--cursor-db", help="advanced/test SQLite path override")
     parser.add_argument("--json", action="store_true", help="output is always JSON")
     return parser
